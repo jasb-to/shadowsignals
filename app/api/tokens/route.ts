@@ -180,6 +180,15 @@ export async function GET(request: NextRequest) {
     console.error("CoinPaprika token fetch failed:", error) // Changed to error level
   }
 
+  if (FALLBACK_TOKENS[tokenId]) {
+    console.log(`Using fallback data for ${tokenId}`)
+    const apiResponse: ApiResponse<CryptoToken> = {
+      success: true,
+      data: FALLBACK_TOKENS[tokenId],
+    }
+    return NextResponse.json(apiResponse)
+  }
+
   console.error(`No data found for token: ${tokenId}`) // Added final error logging
 
   const errorResponse: ApiResponse<CryptoToken> = {
