@@ -553,9 +553,14 @@ export function FuturisticDashboard() {
             {analysisData.trade_setup && (
               <Card className="bg-orange-500/10 border-orange-500/30">
                 <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <Calculator className="h-5 w-5 text-orange-400" />
-                    <CardTitle className="text-orange-400">Recommended Trade Setup</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Calculator className="h-5 w-5 text-orange-400" />
+                      <CardTitle className="text-orange-400">Recommended Trade Setup</CardTitle>
+                    </div>
+                    <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30">
+                      {analysisData.trade_setup.timeframe_focus || "1hr-4hr setup"}
+                    </Badge>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -593,7 +598,7 @@ export function FuturisticDashboard() {
                     <div className="bg-green-500/10 border border-green-500/30 p-3 rounded-lg">
                       <div className="flex items-center gap-2 mb-1">
                         <Target className="h-4 w-4 text-green-400" />
-                        <span className="text-green-400 font-medium text-sm">Take Profit 1</span>
+                        <span className="text-green-400 font-medium text-sm">Take Profit 1 (10%)</span>
                       </div>
                       <div className="text-lg font-bold text-white">
                         {formatPrice(analysisData.trade_setup.take_profit_1)}
@@ -684,6 +689,52 @@ export function FuturisticDashboard() {
           </div>
         )}
       </div>
+
+      <footer className="border-t border-slate-800 bg-slate-950/95 backdrop-blur-sm mt-12">
+        <div className="px-6 py-8">
+          <div className="max-w-4xl mx-auto">
+            <div className="flex items-start gap-3 mb-4">
+              <AlertTriangle className="h-5 w-5 text-red-400 mt-0.5 flex-shrink-0" />
+              <div>
+                <h3 className="text-red-400 font-semibold mb-2">Risk Disclaimer</h3>
+                <div className="text-sm text-slate-300 space-y-2 leading-relaxed">
+                  <p>
+                    <strong>
+                      Cryptocurrency trading involves substantial risk and may result in significant financial losses.
+                    </strong>{" "}
+                    All analysis, signals, and recommendations provided by Shadow Signals are for educational and
+                    informational purposes only and should not be considered as financial advice.
+                  </p>
+                  <p>
+                    Past performance does not guarantee future results. The volatile nature of cryptocurrency markets
+                    means that prices can fluctuate dramatically within short periods. You should never invest more than
+                    you can afford to lose.
+                  </p>
+                  <p>
+                    Our AI-powered analysis uses technical indicators and market data to generate trading signals, but
+                    these are not guarantees of future price movements. Market conditions can change rapidly, and
+                    external factors may significantly impact cryptocurrency prices.
+                  </p>
+                  <p>
+                    <strong>
+                      Always conduct your own research and consider consulting with a qualified financial advisor before
+                      making any investment decisions.
+                    </strong>{" "}
+                    Shadow Signals and its operators are not responsible for any trading losses incurred based on the
+                    information provided on this platform.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-slate-800 pt-4 text-center">
+              <p className="text-xs text-slate-500">
+                © 2024 Shadow Signals. All rights reserved. | Trade responsibly and never risk more than you can afford
+                to lose.
+              </p>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }

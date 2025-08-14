@@ -149,6 +149,7 @@ class AnalysisEngine {
     position_size: string
     risk_reward_ratio: string
     setup_notes: string
+    timeframe_focus: string
   } {
     const currentPrice = token.current_price
     const volatility = Math.abs(token.price_change_percentage_24h) / 100
@@ -156,41 +157,50 @@ class AnalysisEngine {
     let entryMin, entryMax, stopLoss, takeProfit1, takeProfit2
     let positionSize = "2-5% of portfolio"
     let setupNotes = ""
+    let timeframeFocus = ""
 
     if (signal.signal === "Strong Buy" || signal.signal === "Buy") {
-      // Long setup
-      entryMin = currentPrice * 0.98 // 2% below current
-      entryMax = currentPrice * 1.02 // 2% above current
-      stopLoss = indicators.support_level * 0.95 // 5% below support
-      takeProfit1 = currentPrice * 1.15 // 15% profit
-      takeProfit2 = indicators.resistance_level * 1.05 // 5% above resistance
+      // Long setup optimized for 10% target
+      entryMin = currentPrice * 0.995 // 0.5% below current for tight entry
+      entryMax = currentPrice * 1.005 // 0.5% above current
+      stopLoss = currentPrice * 0.96 // 4% stop loss for 1:2.5 risk/reward
+      takeProfit1 = currentPrice * 1.1 // 10% target (primary goal)
+      takeProfit2 = currentPrice * 1.15 // 15% extended target
 
-      setupNotes = `Long setup with ${signal.timeframe} bias. Scale in on dips to entry zone. Take 50% profits at TP1, let remainder run to TP2.`
+      timeframeFocus = "1hr-4hr swing trade"
+      setupNotes = `Optimized for 10% returns within 1-4 hour timeframe. Tight entry zone for maximum R:R. Take 70% profits at 10% target, trail stop for remainder.`
 
-      if (volatility > 0.1) {
+      // Adjust for volatility
+      if (volatility > 0.15) {
+        stopLoss = currentPrice * 0.94 // Wider stop for high volatility
         positionSize = "1-3% of portfolio"
-        setupNotes += " High volatility - reduce position size."
+        setupNotes += " High volatility detected - wider stops and reduced size."
+      } else if (volatility < 0.05) {
+        stopLoss = currentPrice * 0.98 // Tighter stop for low volatility
+        setupNotes += " Low volatility - tighter stops for better R:R."
       }
     } else if (signal.signal === "Strong Sell" || signal.signal === "Sell") {
-      // Short setup (or exit long)
-      entryMin = currentPrice * 0.98
-      entryMax = currentPrice * 1.02
-      stopLoss = indicators.resistance_level * 1.05 // 5% above resistance
-      takeProfit1 = currentPrice * 0.85 // 15% profit on short
-      takeProfit2 = indicators.support_level * 0.95 // 5% below support
+      // Short setup for 10% target
+      entryMin = currentPrice * 0.995
+      entryMax = currentPrice * 1.005
+      stopLoss = currentPrice * 1.04 // 4% stop loss
+      takeProfit1 = currentPrice * 0.9 // 10% target on short
+      takeProfit2 = currentPrice * 0.85 // 15% extended target
 
-      setupNotes = `Short setup or exit long positions. Consider hedging with derivatives if available.`
+      timeframeFocus = "1hr-4hr short trade"
+      setupNotes = `Short setup targeting 10% decline within 1-4 hours. Consider derivatives or exit long positions.`
       positionSize = "1-3% of portfolio"
     } else {
-      // Hold/Neutral
-      entryMin = indicators.support_level
-      entryMax = indicators.resistance_level
-      stopLoss = indicators.support_level * 0.9
-      takeProfit1 = currentPrice * 1.1
+      // Range trading setup
+      entryMin = indicators.support_level * 1.01 // Buy above support
+      entryMax = indicators.resistance_level * 0.99 // Sell below resistance
+      stopLoss = indicators.support_level * 0.97
+      takeProfit1 = currentPrice * 1.1 // Still target 10%
       takeProfit2 = indicators.resistance_level
 
-      setupNotes = `Range-bound trading setup. Buy near support, sell near resistance.`
-      positionSize = "1-2% of portfolio"
+      timeframeFocus = "4hr range trade"
+      setupNotes = `Range-bound strategy. Buy near support, target 10% or resistance level. Multiple entries possible.`
+      positionSize = "2-4% of portfolio"
     }
 
     const riskAmount = Math.abs(currentPrice - stopLoss)
@@ -205,6 +215,7 @@ class AnalysisEngine {
       position_size: positionSize,
       risk_reward_ratio: riskRewardRatio,
       setup_notes: setupNotes,
+      timeframe_focus: timeframeFocus,
     }
   }
 
@@ -218,64 +229,79 @@ class AnalysisEngine {
     const technicalFactors: string[] = []
     let justification = ""
 
-    // RSI-based signals
+    // RSI-based signals with timeframe adjustments
     if (indicators.rsi < 30) {
       signal = indicators.rsi < 20 ? "Strong Buy" : "Buy"
       technicalFactors.push(`Oversold RSI (${indicators.rsi.toFixed(1)})`)
-      confidence += 5
+      confidence += timeframe === "1h" || timeframe === "4h" ? 8 : 5
     } else if (indicators.rsi > 70) {
       signal = indicators.rsi > 80 ? "Strong Sell" : "Sell"
       technicalFactors.push(`Overbought RSI (${indicators.rsi.toFixed(1)})`)
-      confidence += 5
+      confidence += timeframe === "1h" || timeframe === "4h" ? 8 : 5
     }
 
-    // Price change momentum
+    // Stochastic RSI for short-term precision
+    const stochRSI = (indicators as any).stochastic_rsi
+    if (timeframe === "1h" || timeframe === "4h") {
+      if (stochRSI < 20 && indicators.rsi < 50) {
+        signal = signal === "Hold" ? "Buy" : signal === "Buy" ? "Strong Buy" : signal
+        technicalFactors.push(`Stoch RSI oversold (${stochRSI.toFixed(1)})`)
+        confidence += 5
+      } else if (stochRSI > 80 && indicators.rsi > 50) {
+        signal = signal === "Hold" ? "Sell" : signal === "Sell" ? "Strong Sell" : signal
+        technicalFactors.push(`Stoch RSI overbought (${stochRSI.toFixed(1)})`)
+        confidence += 5
+      }
+    }
+
+    // Price momentum for 10% target identification
     const priceChange24h = token.price_change_percentage_24h
     const priceChange7d = token.price_change_percentage_7d
 
-    if (priceChange24h > 10 && priceChange7d > 15) {
-      signal = signal === "Hold" ? "Buy" : signal === "Buy" ? "Strong Buy" : signal
-      technicalFactors.push("Strong upward momentum")
-      confidence += 3
-    } else if (priceChange24h < -10 && priceChange7d < -15) {
-      signal = signal === "Hold" ? "Sell" : signal === "Sell" ? "Strong Sell" : signal
-      technicalFactors.push("Strong downward momentum")
-      confidence += 3
+    // Look for setups with momentum that can achieve 10%
+    if (timeframe === "1h" || timeframe === "4h") {
+      if (priceChange24h > 5 && priceChange24h < 25) {
+        // Sweet spot for continuation
+        signal = signal === "Hold" ? "Buy" : signal === "Buy" ? "Strong Buy" : signal
+        technicalFactors.push("Optimal momentum for 10% target")
+        confidence += 7
+      } else if (priceChange24h < -5 && priceChange24h > -25) {
+        signal = signal === "Hold" ? "Sell" : signal === "Sell" ? "Strong Sell" : signal
+        technicalFactors.push("Bearish momentum for 10% decline")
+        confidence += 7
+      }
     }
 
-    // Volume analysis
+    // Volume analysis - crucial for short-term moves
     if (indicators.volume_indicator === "High") {
-      technicalFactors.push("High trading volume")
-      confidence += 2
+      technicalFactors.push("High volume supports move")
+      confidence += timeframe === "1h" || timeframe === "4h" ? 5 : 2
     }
 
-    // Market cap and liquidity
-    if (indicators.liquidity_metric === "High") {
-      technicalFactors.push("High liquidity")
-      confidence += 2
-    }
-
-    // Support/Resistance levels
+    // Support/Resistance proximity for entries
     const currentPrice = token.current_price
     const distanceToSupport = ((currentPrice - indicators.support_level) / currentPrice) * 100
     const distanceToResistance = ((indicators.resistance_level - currentPrice) / currentPrice) * 100
 
-    if (distanceToSupport < 2) {
-      technicalFactors.push("Near support level")
+    if (distanceToSupport < 3 && (timeframe === "1h" || timeframe === "4h")) {
+      technicalFactors.push("Near support - bounce potential")
       if (signal === "Hold") signal = "Buy"
-    } else if (distanceToResistance < 2) {
-      technicalFactors.push("Near resistance level")
+      confidence += 4
+    } else if (distanceToResistance < 3 && (timeframe === "1h" || timeframe === "4h")) {
+      technicalFactors.push("Near resistance - rejection risk")
       if (signal === "Hold") signal = "Sell"
+      confidence += 4
     }
 
-    // Timeframe-specific adjustments
+    // Timeframe-specific justifications
     switch (timeframe) {
       case "1h":
-        justification = `Short-term scalping signal based on immediate price action and volume. ${technicalFactors.join(", ")}.`
-        confidence = Math.min(confidence, 90) // Cap confidence for short-term
+        justification = `Scalping setup targeting 10% within 1-2 hours. ${technicalFactors.join(", ")}.`
+        confidence = Math.min(confidence, 88) // Slightly lower for very short-term
         break
       case "4h":
-        justification = `Swing trading opportunity identified through technical confluence. ${technicalFactors.join(", ")}.`
+        justification = `Swing trade opportunity for 10% target within 4-12 hours. ${technicalFactors.join(", ")}.`
+        confidence = Math.min(confidence, 92) // Higher confidence for 4h setups
         break
       case "1d":
         justification = `Daily analysis shows ${signal.toLowerCase()} conditions. ${technicalFactors.join(", ")}.`
@@ -285,7 +311,7 @@ class AnalysisEngine {
         break
       case "1m":
         justification = `Long-term investment perspective suggests ${signal.toLowerCase()} position. ${technicalFactors.join(", ")}.`
-        confidence = Math.min(confidence + 5, 95) // Higher confidence for long-term
+        confidence = Math.min(confidence + 3, 95)
         break
     }
 
