@@ -119,7 +119,7 @@ export function AdminDashboard() {
           time: Date.now() - apiCheckStart,
           ok: res.ok,
         })),
-        fetch("/api/analysis?token=bitcoin").then((res) => ({
+        fetch("/api/analysis?tokenId=bitcoin").then((res) => ({
           name: "AI Analysis",
           time: Date.now() - apiCheckStart,
           ok: res.ok,
