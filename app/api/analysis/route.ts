@@ -165,7 +165,7 @@ class AnalysisEngine {
       entryMax = currentPrice * 1.005 // 0.5% above current
       stopLoss = currentPrice * 0.96 // 4% stop loss for 1:2.5 risk/reward
       takeProfit1 = currentPrice * 1.1 // 10% target (primary goal)
-      takeProfit2 = currentPrice * 1.15 // 15% extended target
+      takeProfit2 = currentPrice * 1.18 // 18% extended target (higher than TP1)
 
       timeframeFocus = "1hr-4hr swing trade"
       setupNotes = `Optimized for 10% returns within 1-4 hour timeframe. Tight entry zone for maximum R:R. Take 70% profits at 10% target, trail stop for remainder.`
@@ -185,7 +185,7 @@ class AnalysisEngine {
       entryMax = currentPrice * 1.005
       stopLoss = currentPrice * 1.04 // 4% stop loss
       takeProfit1 = currentPrice * 0.9 // 10% target on short
-      takeProfit2 = currentPrice * 0.85 // 15% extended target
+      takeProfit2 = currentPrice * 0.82 // 18% extended target (lower than TP1 for shorts)
 
       timeframeFocus = "1hr-4hr short trade"
       setupNotes = `Short setup targeting 10% decline within 1-4 hours. Consider derivatives or exit long positions.`
@@ -196,7 +196,7 @@ class AnalysisEngine {
       entryMax = indicators.resistance_level * 0.99 // Sell below resistance
       stopLoss = indicators.support_level * 0.97
       takeProfit1 = currentPrice * 1.1 // Still target 10%
-      takeProfit2 = indicators.resistance_level
+      takeProfit2 = Math.max(indicators.resistance_level, currentPrice * 1.15) // Higher of resistance or 15%
 
       timeframeFocus = "4hr range trade"
       setupNotes = `Range-bound strategy. Buy near support, target 10% or resistance level. Multiple entries possible.`
