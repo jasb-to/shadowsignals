@@ -1,8 +1,8 @@
 import type React from "react"
 import type { Metadata } from "next"
 import { Space_Grotesk, DM_Sans } from "next/font/google"
-import { ThemeProvider } from "@/components/theme-provider"
 import "./globals.css"
+import ClientLayout from "./client-layout"
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
@@ -43,26 +43,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${spaceGrotesk.variable} ${dmSans.variable}`}>
-      <head>
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9833828370676451"
-          crossOrigin="anonymous"
-        />
-        <style>{`
-html {
-  font-family: ${dmSans.style.fontFamily};
-  --font-space-grotesk: ${spaceGrotesk.style.fontFamily};
-  --font-dm-sans: ${dmSans.style.fontFamily};
-}
-        `}</style>
-      </head>
-      <body className="dark">
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
-          {children}
-        </ThemeProvider>
-      </body>
-    </html>
+    <ClientLayout spaceGrotesk={spaceGrotesk} dmSans={dmSans}>
+      {children}
+    </ClientLayout>
   )
 }
