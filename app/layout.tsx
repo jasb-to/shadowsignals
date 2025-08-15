@@ -20,6 +20,9 @@ export const metadata: Metadata = {
   title: "Shadow Signals - Crypto Trading Analysis",
   description: "AI-powered cryptocurrency trading signals and confluence analysis platform",
   generator: "Shadow Signals",
+  other: {
+    "google-adsense-account": "ca-pub-9833828370676451",
+  },
   icons: {
     icon: [
       {
