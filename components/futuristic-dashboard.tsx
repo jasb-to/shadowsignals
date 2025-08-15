@@ -726,11 +726,26 @@ export function FuturisticDashboard() {
                 </div>
               </div>
             </div>
-            <div className="border-t border-slate-800 pt-4 text-center">
-              <p className="text-xs text-slate-500">
-                © 2024 Shadow Signals. All rights reserved. | Trade responsibly and never risk more than you can afford
-                to lose.
-              </p>
+            <div className="border-t border-slate-800 pt-4">
+              <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                <div className="flex flex-wrap gap-4 text-xs text-slate-400">
+                  <a href="/legal" className="hover:text-cyan-400 transition-colors">
+                    Privacy Policy
+                  </a>
+                  <span>•</span>
+                  <a href="/legal" className="hover:text-cyan-400 transition-colors">
+                    Terms of Service
+                  </a>
+                  <span>•</span>
+                  <a href="mailto:info@shadowsignals.live" className="hover:text-cyan-400 transition-colors">
+                    Contact Support
+                  </a>
+                </div>
+                <p className="text-xs text-slate-500 text-center">
+                  © 2024 Shadow Signals. All rights reserved. | Trade responsibly and never risk more than you can
+                  afford to lose.
+                </p>
+              </div>
             </div>
           </div>
         </div>
