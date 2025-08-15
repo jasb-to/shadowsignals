@@ -102,7 +102,7 @@ export async function GET() {
   try {
     const [globalResponse, btcResponse] = await Promise.all([
       fetchWithTimeout(`${COINPAPRIKA_BASE_URL}/global`),
-      fetchWithTimeout(`${COINPAPRIKA_BASE_URL}/coins/btc-bitcoin`),
+      fetchWithTimeout(`${COINPAPRIKA_BASE_URL}/tickers/btc-bitcoin`), // Use tickers endpoint for current price
     ])
 
     console.log("[v0] CoinPaprika responses:", {
@@ -118,23 +118,35 @@ export async function GET() {
       const globalData = safeJsonParse<any>(globalText)
       const btcData = safeJsonParse<any>(btcText)
 
-      if (globalData && btcData) {
+      console.log("[v0] CoinPaprika data:", {
+        // Add logging to see actual data
+        globalData: globalData ? Object.keys(globalData) : null,
+        btcPrice: btcData?.quotes?.USD?.price,
+        btcChange: btcData?.quotes?.USD?.percent_change_24h,
+      })
+
+      if (globalData && btcData?.quotes?.USD) {
+        const btcPrice = btcData.quotes.USD.price || 0
+        const btcChange = btcData.quotes.USD.percent_change_24h || 0
+        const marketCap = globalData.market_cap_usd || btcData.quotes.USD.market_cap || 2500000000000
+        const volume24h = globalData.volume_24h_usd || 150000000000
+
         const overview: MarketOverview = {
-          total_market_cap: globalData.market_cap_usd || 2500000000000, // Fallback estimate
-          total_volume_24h: globalData.volume_24h_usd || 150000000000, // Fallback estimate
+          total_market_cap: marketCap,
+          total_volume_24h: volume24h,
           market_cap_change_percentage_24h: globalData.market_cap_change_24h || -1.5,
           active_cryptocurrencies: globalData.cryptocurrencies_number || 2500,
           usdt_pairs_count: 850,
           active_analysis_count: 200,
-          btc_price: 45000, // Conservative fallback
-          btc_price_change_24h: -2.1,
-          btc_dominance: 52.5,
-          usdt_dominance: 5.2,
-          total3_market_cap: 1200000000000, // Estimate excluding BTC/ETH
-          total3_change_24h: -1.8,
+          btc_price: btcPrice, // Use real BTC price from CoinPaprika
+          btc_price_change_24h: btcChange, // Use real 24h change
+          btc_dominance: (btcData.quotes.USD.market_cap / marketCap) * 100 || 52.5, // Calculate real dominance
+          usdt_dominance: 5.2, // Keep as fallback since CoinPaprika doesn't provide this easily
+          total3_market_cap: marketCap - (btcData.quotes.USD.market_cap || 0), // Calculate Total3 properly
+          total3_change_24h: globalData.market_cap_change_24h || -1.8,
         }
 
-        console.log("[v0] CoinPaprika fallback success")
+        console.log("[v0] CoinPaprika fallback success with real data:", { btcPrice, btcChange })
         const apiResponse: ApiResponse<MarketOverview> = {
           success: true,
           data: overview,

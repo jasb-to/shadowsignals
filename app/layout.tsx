@@ -45,6 +45,11 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={`${spaceGrotesk.variable} ${dmSans.variable}`}>
       <head>
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9833828370676451"
+          crossOrigin="anonymous"
+        />
         <style>{`
 html {
   font-family: ${dmSans.style.fontFamily};
