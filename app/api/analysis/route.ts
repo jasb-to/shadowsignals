@@ -49,12 +49,11 @@ class AnalysisEngine {
     resistance_levels: number[]
     trend_direction: "Bullish" | "Bearish" | "Neutral"
   } {
-    // Calculate multiple support and resistance levels
     const support1 = currentPrice * 0.95 // 5% below
     const support2 = currentPrice * 0.88 // 12% below
-    const resistance1 = currentPrice * 1.05 // 5% above
-    const resistance2 = currentPrice * 1.12 // 12% above
-    const resistance3 = currentPrice * 1.18 // 18% above
+    const resistance1 = currentPrice * 1.08 // 8% above (first resistance)
+    const resistance2 = currentPrice * 1.15 // 15% above (second resistance)
+    const resistance3 = currentPrice * 1.22 // 22% above (third resistance)
 
     // Enhanced trend direction based on price action
     const recentPrices = priceHistory.slice(-10)
@@ -69,8 +68,8 @@ class AnalysisEngine {
     else if (trendStrength < -3) trend_direction = "Bearish"
 
     return {
-      support_levels: [support1, support2],
-      resistance_levels: [resistance1, resistance2, resistance3],
+      support_levels: [support2, support1], // Ordered from lowest to highest
+      resistance_levels: [resistance1, resistance2, resistance3], // Ordered from lowest to highest
       trend_direction,
     }
   }
@@ -230,41 +229,39 @@ class AnalysisEngine {
       entryMax = currentPrice * 1.005 // 0.5% above current
       stopLoss = supportLevels[0] * 0.98 // Below first support level
 
-      // TP1 at first resistance, TP2 at second resistance (ensuring TP2 > TP1)
-      takeProfit1 = resistanceLevels[0] // First resistance level
-      takeProfit2 = resistanceLevels[1] // Second resistance level (higher)
+      takeProfit1 = resistanceLevels[0] // First resistance level (8% above)
+      takeProfit2 = resistanceLevels[1] // Second resistance level (15% above) - ALWAYS higher than TP1
 
       timeframeFocus = "1hr-4hr swing trade"
       setupNotes = `Long setup targeting resistance zones. TP1 at $${takeProfit1.toFixed(4)} (first resistance), TP2 at $${takeProfit2.toFixed(4)} (second resistance). Take 70% profits at TP1, trail remainder.`
 
       // Adjust for volatility
       if (volatility > 0.15) {
-        stopLoss = supportLevels[1] * 0.98 // Use deeper support for high volatility
+        stopLoss = supportLevels[0] * 0.98 // Use first support for high volatility
         positionSize = "1-3% of portfolio"
-        setupNotes += " High volatility - using deeper support level."
+        setupNotes += " High volatility - using tighter risk management."
       }
     } else if (signal.signal === "Strong Sell" || signal.signal === "Sell") {
       entryMin = currentPrice * 0.995
       entryMax = currentPrice * 1.005
       stopLoss = resistanceLevels[0] * 1.02 // Above first resistance level
 
-      // TP1 at first support, TP2 at second support (ensuring TP2 < TP1 for shorts)
-      takeProfit1 = supportLevels[0] // First support level
-      takeProfit2 = supportLevels[1] // Second support level (lower)
+      takeProfit1 = supportLevels[1] // First support level (higher)
+      takeProfit2 = supportLevels[0] // Second support level (lower) - for shorts, TP2 should be lower
 
       timeframeFocus = "1hr-4hr short trade"
-      setupNotes = `Short setup targeting support zones. TP1 at $${takeProfit1.toFixed(4)} (first support), TP2 at $${takeProfit2.toFixed(4)} (second support). Consider derivatives or exit longs.`
+      setupNotes = `Short setup targeting support zones. TP1 at $${takeProfit1.toFixed(4)} (first support), TP2 at $${takeProfit2.toFixed(4)} (deeper support). Consider derivatives or exit longs.`
       positionSize = "1-3% of portfolio"
     } else {
       // Range trading setup
-      entryMin = supportLevels[0] * 1.01 // Buy above support
+      entryMin = supportLevels[1] * 1.01 // Buy above higher support
       entryMax = resistanceLevels[0] * 0.99 // Sell below resistance
-      stopLoss = supportLevels[0] * 0.97
+      stopLoss = supportLevels[0] * 0.97 // Below deeper support
       takeProfit1 = resistanceLevels[0] // First resistance
-      takeProfit2 = resistanceLevels[1] // Second resistance
+      takeProfit2 = resistanceLevels[1] // Second resistance (higher)
 
       timeframeFocus = "4hr range trade"
-      setupNotes = `Range-bound strategy. Buy near support at $${supportLevels[0].toFixed(4)}, target resistance levels.`
+      setupNotes = `Range-bound strategy. Buy near support at $${supportLevels[1].toFixed(4)}, target resistance levels.`
       positionSize = "2-4% of portfolio"
     }
 
