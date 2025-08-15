@@ -17,9 +17,24 @@ const dmSans = DM_Sans({
 })
 
 export const metadata: Metadata = {
-  title: "FutureOS - Futuristic Dashboard",
-  description: "Advanced futuristic dashboard with AI-powered analytics and real-time monitoring",
-  generator: "FutureOS",
+  title: "Shadow Signals - Crypto Trading Analysis",
+  description: "AI-powered cryptocurrency trading signals and confluence analysis platform",
+  generator: "Shadow Signals",
+  icons: {
+    icon: [
+      {
+        url: "/placeholder.svg?height=32&width=32",
+        sizes: "32x32",
+        type: "image/svg+xml",
+      },
+      {
+        url: "/placeholder.svg?height=16&width=16",
+        sizes: "16x16",
+        type: "image/svg+xml",
+      },
+    ],
+    shortcut: "/placeholder.svg?height=32&width=32",
+  },
 }
 
 export default function RootLayout({
