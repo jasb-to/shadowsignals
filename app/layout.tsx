@@ -1,8 +1,8 @@
 import type React from "react"
 import type { Metadata } from "next"
 import { Space_Grotesk, DM_Sans } from "next/font/google"
-import "./globals.css"
 import ClientLayout from "./client-layout"
+import "./globals.css"
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
@@ -42,9 +42,5 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  return (
-    <ClientLayout spaceGrotesk={spaceGrotesk} dmSans={dmSans}>
-      {children}
-    </ClientLayout>
-  )
+  return <ClientLayout className={`${spaceGrotesk.variable} ${dmSans.variable}`}>{children}</ClientLayout>
 }
