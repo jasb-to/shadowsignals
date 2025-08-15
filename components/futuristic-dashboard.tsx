@@ -588,7 +588,9 @@ export function FuturisticDashboard() {
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-white font-medium">Stochastic RSI</span>
                       <span className="text-cyan-400 font-bold">
-                        {analysisData.technical_indicators.stochastic_rsi?.toFixed(1) || "50.0"}
+                        {analysisData.technical_indicators.stochastic_rsi !== undefined
+                          ? analysisData.technical_indicators.stochastic_rsi.toFixed(1)
+                          : "0.0"}
                       </span>
                     </div>
                     <div className="relative">
