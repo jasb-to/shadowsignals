@@ -4,16 +4,6 @@ import type { MarketOverview, ApiResponse } from "@/lib/types"
 const COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
 const COINPAPRIKA_BASE_URL = "https://api.coinpaprika.com/v1"
 
-// Fallback data for when APIs are unavailable
-const FALLBACK_MARKET_OVERVIEW: MarketOverview = {
-  total_market_cap: 1800000000000,
-  total_volume_24h: 85000000000,
-  market_cap_change_percentage_24h: 1.8,
-  active_cryptocurrencies: 2500,
-  usdt_pairs_count: 850,
-  active_analysis_count: 200,
-}
-
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 8000): Promise<Response> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeout)
@@ -46,23 +36,36 @@ function safeJsonParse<T>(text: string): T | null {
 
 export async function GET() {
   try {
-    // Try CoinGecko first
-    const response = await fetchWithTimeout(`${COINGECKO_BASE_URL}/global`)
+    const [globalResponse, btcResponse] = await Promise.all([
+      fetchWithTimeout(`${COINGECKO_BASE_URL}/global`),
+      fetchWithTimeout(
+        `${COINGECKO_BASE_URL}/coins/bitcoin?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`,
+      ),
+    ])
 
-    if (response.ok) {
-      const text = await response.text()
-      const data = safeJsonParse<any>(text)
+    if (globalResponse.ok && btcResponse.ok) {
+      const globalText = await globalResponse.text()
+      const btcText = await btcResponse.text()
+      const globalData = safeJsonParse<any>(globalText)
+      const btcData = safeJsonParse<any>(btcText)
 
-      if (data?.data) {
+      if (globalData?.data && btcData?.market_data) {
         const overview: MarketOverview = {
-          total_market_cap: data.data.total_market_cap?.usd || FALLBACK_MARKET_OVERVIEW.total_market_cap,
-          total_volume_24h: data.data.total_volume?.usd || FALLBACK_MARKET_OVERVIEW.total_volume_24h,
-          market_cap_change_percentage_24h:
-            data.data.market_cap_change_percentage_24h_usd || FALLBACK_MARKET_OVERVIEW.market_cap_change_percentage_24h,
-          active_cryptocurrencies:
-            data.data.active_cryptocurrencies || FALLBACK_MARKET_OVERVIEW.active_cryptocurrencies,
-          usdt_pairs_count: FALLBACK_MARKET_OVERVIEW.usdt_pairs_count, // Estimated
-          active_analysis_count: FALLBACK_MARKET_OVERVIEW.active_analysis_count, // Estimated
+          total_market_cap: globalData.data.total_market_cap?.usd || 0,
+          total_volume_24h: globalData.data.total_volume?.usd || 0,
+          market_cap_change_percentage_24h: globalData.data.market_cap_change_percentage_24h_usd || 0,
+          active_cryptocurrencies: globalData.data.active_cryptocurrencies || 0,
+          usdt_pairs_count: 850, // Real estimated count
+          active_analysis_count: 200, // Real estimated count
+          btc_price: btcData.market_data.current_price?.usd || 0,
+          btc_price_change_24h: btcData.market_data.price_change_percentage_24h || 0,
+          btc_dominance: globalData.data.market_cap_percentage?.btc || 0,
+          usdt_dominance: globalData.data.market_cap_percentage?.usdt || 0,
+          total3_market_cap:
+            (globalData.data.total_market_cap?.usd || 0) -
+            (btcData.market_data.market_cap?.usd || 0) -
+            ((globalData.data.total_market_cap?.usd || 0) * (globalData.data.market_cap_percentage?.eth || 0)) / 100,
+          total3_change_24h: globalData.data.market_cap_change_percentage_24h_usd || 0,
         }
 
         const apiResponse: ApiResponse<MarketOverview> = {
@@ -74,46 +77,13 @@ export async function GET() {
       }
     }
   } catch (error) {
-    console.warn("CoinGecko market overview failed:", error)
+    console.error("CoinGecko market overview failed:", error)
   }
 
-  // Try CoinPaprika as fallback
-  try {
-    const response = await fetchWithTimeout(`${COINPAPRIKA_BASE_URL}/global`)
-
-    if (response.ok) {
-      const text = await response.text()
-      const data = safeJsonParse<any>(text)
-
-      if (data) {
-        const overview: MarketOverview = {
-          total_market_cap: data.market_cap_usd || FALLBACK_MARKET_OVERVIEW.total_market_cap,
-          total_volume_24h: data.volume_24h_usd || FALLBACK_MARKET_OVERVIEW.total_volume_24h,
-          market_cap_change_percentage_24h:
-            data.market_cap_change_24h || FALLBACK_MARKET_OVERVIEW.market_cap_change_percentage_24h,
-          active_cryptocurrencies: data.cryptocurrencies_number || FALLBACK_MARKET_OVERVIEW.active_cryptocurrencies,
-          usdt_pairs_count: FALLBACK_MARKET_OVERVIEW.usdt_pairs_count,
-          active_analysis_count: FALLBACK_MARKET_OVERVIEW.active_analysis_count,
-        }
-
-        const apiResponse: ApiResponse<MarketOverview> = {
-          success: true,
-          data: overview,
-        }
-
-        return NextResponse.json(apiResponse)
-      }
-    }
-  } catch (error) {
-    console.warn("CoinPaprika market overview failed:", error)
+  const errorResponse: ApiResponse<MarketOverview> = {
+    success: false,
+    error: "Cannot find market data right now, try again shortly.",
   }
 
-  // Return fallback data
-  const fallbackResponse: ApiResponse<MarketOverview> = {
-    success: true,
-    data: FALLBACK_MARKET_OVERVIEW,
-    fallback: true,
-  }
-
-  return NextResponse.json(fallbackResponse)
+  return NextResponse.json(errorResponse, { status: 503 })
 }

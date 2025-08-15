@@ -66,6 +66,7 @@ export function FuturisticDashboard() {
   const [analysisData, setAnalysisData] = useState<AnalysisResult | null>(null)
   const [marketData, setMarketData] = useState<MarketOverview | null>(null)
   const [lastUpdated, setLastUpdated] = useState<string>("")
+  const [errorMessage, setErrorMessage] = useState<string>("")
 
   const debounceSearch = useCallback(
     (() => {
@@ -87,14 +88,25 @@ export function FuturisticDashboard() {
 
   const fetchMarketData = async () => {
     try {
+      console.log("[v0] Fetching market data from /api/market-overview")
       const response = await fetch("/api/market-overview")
       const data = await response.json()
+      console.log("[v0] Market overview API response:", data)
+
       if (data.success) {
+        console.log("[v0] Setting market data:", data.data)
         setMarketData(data.data)
         setLastUpdated(new Date().toLocaleTimeString())
+        setErrorMessage("")
+      } else {
+        console.log("[v0] Market overview API failed:", data.error)
+        setMarketData(null)
+        setErrorMessage(data.error || "Failed to fetch market data")
       }
     } catch (error) {
-      console.error("Failed to fetch market data:", error)
+      console.error("[v0] Failed to fetch market data:", error)
+      setMarketData(null)
+      setErrorMessage("Failed to fetch market data")
     }
   }
 
@@ -192,9 +204,19 @@ export function FuturisticDashboard() {
   }, [])
 
   useEffect(() => {
-    fetchMarketData()
-    const interval = setInterval(fetchMarketData, 60000) // Update every minute
-    return () => clearInterval(interval)
+    const initialFetchTimer = setTimeout(() => {
+      fetchMarketData()
+    }, 2000)
+
+    const intervalTimer = setTimeout(() => {
+      const interval = setInterval(fetchMarketData, 60000) // Update every minute
+      return () => clearInterval(interval)
+    }, 5000)
+
+    return () => {
+      clearTimeout(initialFetchTimer)
+      clearTimeout(intervalTimer)
+    }
   }, [])
 
   const formatNumber = (num: number) => {
@@ -749,6 +771,15 @@ export function FuturisticDashboard() {
             <p className="text-slate-500">Enter a token symbol above to get AI-powered confluence analysis</p>
           </div>
         )}
+
+        {/* Error Message */}
+        {errorMessage && (
+          <div className="text-center py-12">
+            <AlertTriangle className="h-12 w-12 mx-auto text-red-400 mb-4" />
+            <h3 className="text-lg font-semibold text-red-400 mb-2">Error</h3>
+            <p className="text-slate-500">{errorMessage}</p>
+          </div>
+        )}
       </div>
 
       <footer className="border-t border-slate-800 bg-slate-950/95 backdrop-blur-sm mt-12">
@@ -803,8 +834,8 @@ export function FuturisticDashboard() {
                   </a>
                 </div>
                 <p className="text-xs text-slate-500 text-center">
-                  © 2024 Shadow Signals. All rights reserved. | Trade responsibly and never risk more than you can
-                  afford to lose.
+                  © 2024 Shadow Signals. All rights reserved. Trade responsibly and never risk more than you can afford
+                  to lose.
                 </p>
               </div>
             </div>

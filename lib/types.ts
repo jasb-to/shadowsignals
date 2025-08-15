@@ -27,6 +27,12 @@ export interface MarketOverview {
   active_cryptocurrencies: number
   usdt_pairs_count: number
   active_analysis_count: number
+  btc_price: number
+  btc_price_change_24h: number
+  btc_dominance: number
+  usdt_dominance: number
+  total3_market_cap: number
+  total3_change_24h: number
 }
 
 export interface TechnicalIndicators {
