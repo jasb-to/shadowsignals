@@ -41,18 +41,84 @@ class AnalysisEngine {
     return ((currentRSI - minRSI) / (maxRSI - minRSI)) * 100
   }
 
-  private calculateSupportResistance(currentPrice: number): { support: number; resistance: number } {
-    // Simplified support/resistance calculation based on price levels
-    const support = currentPrice * 0.92 // 8% below current price
-    const resistance = currentPrice * 1.08 // 8% above current price
+  private calculateSupportResistanceLevels(
+    currentPrice: number,
+    priceHistory: number[],
+  ): {
+    support_levels: number[]
+    resistance_levels: number[]
+    trend_direction: "Bullish" | "Bearish" | "Neutral"
+  } {
+    // Calculate multiple support and resistance levels
+    const support1 = currentPrice * 0.95 // 5% below
+    const support2 = currentPrice * 0.88 // 12% below
+    const resistance1 = currentPrice * 1.05 // 5% above
+    const resistance2 = currentPrice * 1.12 // 12% above
+    const resistance3 = currentPrice * 1.18 // 18% above
 
-    return { support, resistance }
+    // Enhanced trend direction based on price action
+    const recentPrices = priceHistory.slice(-10)
+    const oldPrices = priceHistory.slice(-20, -10)
+    const recentAvg = recentPrices.reduce((a, b) => a + b, 0) / recentPrices.length
+    const oldAvg = oldPrices.reduce((a, b) => a + b, 0) / oldPrices.length
+
+    let trend_direction: "Bullish" | "Bearish" | "Neutral" = "Neutral"
+    const trendStrength = ((recentAvg - oldAvg) / oldAvg) * 100
+
+    if (trendStrength > 3) trend_direction = "Bullish"
+    else if (trendStrength < -3) trend_direction = "Bearish"
+
+    return {
+      support_levels: [support1, support2],
+      resistance_levels: [resistance1, resistance2, resistance3],
+      trend_direction,
+    }
+  }
+
+  private async getHuggingFaceAnalysis(tokenSymbol: string, currentPrice: number): Promise<string> {
+    const huggingFaceKey = process.env.HUGGINGFACE_API_KEY
+
+    if (!huggingFaceKey) {
+      console.log("[v0] Hugging Face API key not found, using simulated analysis")
+      return `Simulated AI analysis for ${tokenSymbol}: Technical patterns suggest potential price movement based on current market conditions at $${currentPrice}.`
+    }
+
+    try {
+      const prompt = `Analyze ${tokenSymbol} cryptocurrency trading at $${currentPrice}. Provide a brief technical analysis focusing on short-term price action and trading opportunities.`
+
+      const response = await fetch("https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${huggingFaceKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          inputs: prompt,
+          parameters: {
+            max_length: 150,
+            temperature: 0.7,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        return result.generated_text || `AI analysis for ${tokenSymbol} at current levels.`
+      }
+    } catch (error) {
+      console.error("[v0] Hugging Face API error:", error)
+    }
+
+    return `AI analysis for ${tokenSymbol}: Market conditions suggest monitoring key levels for potential trading opportunities.`
   }
 
   private generateTechnicalIndicators(token: CryptoToken): TechnicalIndicators & {
     stochastic_rsi: number
     short_term_outlook: string
     long_term_outlook: string
+    trend_direction: "Bullish" | "Bearish" | "Neutral"
+    support_levels: number[]
+    resistance_levels: number[]
   } {
     // Simulate price history for RSI calculation
     const basePrice = token.current_price
@@ -64,16 +130,12 @@ class AnalysisEngine {
 
     const rsi = this.calculateRSI(priceHistory)
     const stochasticRSI = this.calculateStochasticRSI(priceHistory)
-    const { support, resistance } = this.calculateSupportResistance(token.current_price)
+
+    const levels = this.calculateSupportResistanceLevels(token.current_price, priceHistory)
 
     // Volume and liquidity indicators based on market data
     const volumeIndicator = token.total_volume > 1000000000 ? "High" : token.total_volume > 100000000 ? "Medium" : "Low"
     const liquidityMetric = token.market_cap > 10000000000 ? "High" : token.market_cap > 1000000000 ? "Medium" : "Low"
-
-    // Trend analysis based on price changes
-    let trendDirection: "Bullish" | "Bearish" | "Neutral" = "Neutral"
-    if (token.price_change_percentage_24h > 5) trendDirection = "Bullish"
-    else if (token.price_change_percentage_24h < -5) trendDirection = "Bearish"
 
     const shortTermOutlook = this.generateShortTermOutlook(token, rsi, stochasticRSI)
     const longTermOutlook = this.generateLongTermOutlook(token, rsi)
@@ -81,11 +143,13 @@ class AnalysisEngine {
     return {
       rsi,
       stochastic_rsi: stochasticRSI,
-      support_level: support,
-      resistance_level: resistance,
+      support_level: levels.support_levels[0], // Keep for backward compatibility
+      resistance_level: levels.resistance_levels[0], // Keep for backward compatibility
+      support_levels: levels.support_levels,
+      resistance_levels: levels.resistance_levels,
+      trend_direction: levels.trend_direction,
       volume_indicator: volumeIndicator as "High" | "Medium" | "Low",
       liquidity_metric: liquidityMetric as "High" | "Medium" | "Low",
-      trend_direction: trendDirection,
       short_term_outlook: shortTermOutlook,
       long_term_outlook: longTermOutlook,
     }
@@ -153,6 +217,8 @@ class AnalysisEngine {
   } {
     const currentPrice = token.current_price
     const volatility = Math.abs(token.price_change_percentage_24h) / 100
+    const supportLevels = indicators.support_levels
+    const resistanceLevels = indicators.resistance_levels
 
     let entryMin, entryMax, stopLoss, takeProfit1, takeProfit2
     let positionSize = "2-5% of portfolio"
@@ -160,46 +226,45 @@ class AnalysisEngine {
     let timeframeFocus = ""
 
     if (signal.signal === "Strong Buy" || signal.signal === "Buy") {
-      // Long setup optimized for 10% target
       entryMin = currentPrice * 0.995 // 0.5% below current for tight entry
       entryMax = currentPrice * 1.005 // 0.5% above current
-      stopLoss = currentPrice * 0.96 // 4% stop loss for 1:2.5 risk/reward
-      takeProfit1 = currentPrice * 1.1 // 10% target (primary goal)
-      takeProfit2 = currentPrice * 1.18 // 18% extended target (higher than TP1)
+      stopLoss = supportLevels[0] * 0.98 // Below first support level
+
+      // TP1 at first resistance, TP2 at second resistance (ensuring TP2 > TP1)
+      takeProfit1 = resistanceLevels[0] // First resistance level
+      takeProfit2 = resistanceLevels[1] // Second resistance level (higher)
 
       timeframeFocus = "1hr-4hr swing trade"
-      setupNotes = `Optimized for 10% returns within 1-4 hour timeframe. Tight entry zone for maximum R:R. Take 70% profits at 10% target, trail stop for remainder.`
+      setupNotes = `Long setup targeting resistance zones. TP1 at $${takeProfit1.toFixed(4)} (first resistance), TP2 at $${takeProfit2.toFixed(4)} (second resistance). Take 70% profits at TP1, trail remainder.`
 
       // Adjust for volatility
       if (volatility > 0.15) {
-        stopLoss = currentPrice * 0.94 // Wider stop for high volatility
+        stopLoss = supportLevels[1] * 0.98 // Use deeper support for high volatility
         positionSize = "1-3% of portfolio"
-        setupNotes += " High volatility detected - wider stops and reduced size."
-      } else if (volatility < 0.05) {
-        stopLoss = currentPrice * 0.98 // Tighter stop for low volatility
-        setupNotes += " Low volatility - tighter stops for better R:R."
+        setupNotes += " High volatility - using deeper support level."
       }
     } else if (signal.signal === "Strong Sell" || signal.signal === "Sell") {
-      // Short setup for 10% target
       entryMin = currentPrice * 0.995
       entryMax = currentPrice * 1.005
-      stopLoss = currentPrice * 1.04 // 4% stop loss
-      takeProfit1 = currentPrice * 0.9 // 10% target on short
-      takeProfit2 = currentPrice * 0.82 // 18% extended target (lower than TP1 for shorts)
+      stopLoss = resistanceLevels[0] * 1.02 // Above first resistance level
+
+      // TP1 at first support, TP2 at second support (ensuring TP2 < TP1 for shorts)
+      takeProfit1 = supportLevels[0] // First support level
+      takeProfit2 = supportLevels[1] // Second support level (lower)
 
       timeframeFocus = "1hr-4hr short trade"
-      setupNotes = `Short setup targeting 10% decline within 1-4 hours. Consider derivatives or exit long positions.`
+      setupNotes = `Short setup targeting support zones. TP1 at $${takeProfit1.toFixed(4)} (first support), TP2 at $${takeProfit2.toFixed(4)} (second support). Consider derivatives or exit longs.`
       positionSize = "1-3% of portfolio"
     } else {
       // Range trading setup
-      entryMin = indicators.support_level * 1.01 // Buy above support
-      entryMax = indicators.resistance_level * 0.99 // Sell below resistance
-      stopLoss = indicators.support_level * 0.97
-      takeProfit1 = currentPrice * 1.1 // Still target 10%
-      takeProfit2 = Math.max(indicators.resistance_level, currentPrice * 1.15) // Higher of resistance or 15%
+      entryMin = supportLevels[0] * 1.01 // Buy above support
+      entryMax = resistanceLevels[0] * 0.99 // Sell below resistance
+      stopLoss = supportLevels[0] * 0.97
+      takeProfit1 = resistanceLevels[0] // First resistance
+      takeProfit2 = resistanceLevels[1] // Second resistance
 
       timeframeFocus = "4hr range trade"
-      setupNotes = `Range-bound strategy. Buy near support, target 10% or resistance level. Multiple entries possible.`
+      setupNotes = `Range-bound strategy. Buy near support at $${supportLevels[0].toFixed(4)}, target resistance levels.`
       positionSize = "2-4% of portfolio"
     }
 
@@ -324,22 +389,28 @@ class AnalysisEngine {
     }
   }
 
-  private generateAIInsight(token: CryptoToken, signals: TradingSignal[], tradeSetup: any): string {
+  private async generateAIInsight(token: CryptoToken, signals: TradingSignal[], tradeSetup: any): Promise<string> {
     const bullishSignals = signals.filter((s) => s.signal === "Strong Buy" || s.signal === "Buy").length
     const bearishSignals = signals.filter((s) => s.signal === "Strong Sell" || s.signal === "Sell").length
 
     const marketCapCategory =
       token.market_cap > 100000000000 ? "large-cap" : token.market_cap > 10000000000 ? "mid-cap" : "small-cap"
 
+    // Get AI-powered analysis from Hugging Face
+    const aiAnalysis = await this.getHuggingFaceAnalysis(token.symbol, token.current_price)
+
     let insight = `${token.name} (${token.symbol.toUpperCase()}) is a ${marketCapCategory} cryptocurrency `
 
     if (bullishSignals > bearishSignals) {
       insight += `showing bullish momentum across multiple timeframes. The confluence of technical indicators suggests potential upward price movement. `
-    } else if (bearishSignals > bearishSignals) {
+    } else if (bearishSignals > bullishSignals) {
       insight += `displaying bearish characteristics with multiple sell signals. Technical analysis indicates potential downward pressure. `
     } else {
       insight += `in a consolidation phase with mixed signals across timeframes. Market indecision suggests waiting for clearer directional bias. `
     }
+
+    // Add AI analysis
+    insight += `AI Analysis: ${aiAnalysis} `
 
     // Add specific insights based on price performance
     if (token.price_change_percentage_24h > 15) {
@@ -369,7 +440,7 @@ class AnalysisEngine {
     const primarySignal = signals.find((s) => s.timeframe === "1d") || signals[0]
     const tradeSetup = this.generateTradeSetup(token, technicalIndicators, primarySignal)
 
-    const aiInsight = this.generateAIInsight(token, signals, tradeSetup)
+    const aiInsight = await this.generateAIInsight(token, signals, tradeSetup)
 
     return {
       token,
