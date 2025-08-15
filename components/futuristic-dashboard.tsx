@@ -18,10 +18,11 @@ import {
   Target,
   Shield,
   AlertTriangle,
-  Clock,
-  Calendar,
   TrendingDown,
   Calculator,
+  Bitcoin,
+  PieChart,
+  Coins,
 } from "lucide-react"
 
 interface MarketOverview {
@@ -31,6 +32,12 @@ interface MarketOverview {
   active_cryptocurrencies: number
   usdt_pairs_count: number
   active_analysis_count: number
+  btc_price: number
+  btc_price_change_24h: number
+  btc_dominance: number
+  usdt_dominance: number
+  total3_market_cap: number
+  total3_change_24h: number
 }
 
 interface SearchResult {
@@ -197,7 +204,8 @@ export function FuturisticDashboard() {
     return `$${num.toLocaleString()}`
   }
 
-  const formatPrice = (price: number) => {
+  const formatPrice = (price: number | undefined) => {
+    if (price === undefined || price === null || isNaN(price)) return "Loading..."
     if (price < 0.01) return `$${price.toFixed(6)}`
     if (price < 1) return `$${price.toFixed(4)}`
     return `$${price.toLocaleString()}`
@@ -230,7 +238,7 @@ export function FuturisticDashboard() {
       </header>
 
       <div className="px-6 py-6 space-y-6">
-        {/* Data Cards */}
+        {/* Data Cards - First Row */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="bg-slate-900/50 border-slate-800 hover:border-green-500/50 transition-colors">
             <CardHeader className="pb-2">
@@ -302,6 +310,89 @@ export function FuturisticDashboard() {
                   <div className="text-sm text-slate-400">Running</div>
                 </div>
                 <Zap className="h-8 w-8 text-cyan-400" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Data Cards - Second Row */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="bg-slate-900/50 border-slate-800 hover:border-orange-500/50 transition-colors">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-slate-400">BTC Price</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-white">
+                    {marketData?.btc_price ? formatPrice(marketData.btc_price) : "Loading..."}
+                  </div>
+                  <div
+                    className={`text-sm ${marketData?.btc_price_change_24h && marketData.btc_price_change_24h >= 0 ? "text-green-400" : "text-red-400"}`}
+                  >
+                    {marketData?.btc_price_change_24h
+                      ? `${marketData.btc_price_change_24h >= 0 ? "+" : ""}${marketData.btc_price_change_24h.toFixed(2)}% 24h`
+                      : "..."}
+                  </div>
+                </div>
+                <Bitcoin className="h-8 w-8 text-orange-400" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-slate-900/50 border-slate-800 hover:border-yellow-500/50 transition-colors">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-slate-400">BTC Dominance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-white">
+                    {marketData?.btc_dominance ? `${marketData.btc_dominance.toFixed(1)}%` : "Loading..."}
+                  </div>
+                  <div className="text-sm text-slate-400">Market Share</div>
+                </div>
+                <PieChart className="h-8 w-8 text-yellow-400" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-slate-900/50 border-slate-800 hover:border-teal-500/50 transition-colors">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-slate-400">USDT Dominance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-white">
+                    {marketData?.usdt_dominance ? `${marketData.usdt_dominance.toFixed(1)}%` : "Loading..."}
+                  </div>
+                  <div className="text-sm text-slate-400">Stablecoin Share</div>
+                </div>
+                <Coins className="h-8 w-8 text-teal-400" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-slate-900/50 border-slate-800 hover:border-indigo-500/50 transition-colors">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-slate-400">Total3 Market Cap</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-white">
+                    {marketData?.total3_market_cap ? formatNumber(marketData.total3_market_cap) : "Loading..."}
+                  </div>
+                  <div
+                    className={`text-sm ${marketData?.total3_change_24h && marketData.total3_change_24h >= 0 ? "text-green-400" : "text-red-400"}`}
+                  >
+                    {marketData?.total3_change_24h
+                      ? `${marketData.total3_change_24h >= 0 ? "+" : ""}${marketData.total3_change_24h.toFixed(2)}% 24h`
+                      : "..."}
+                  </div>
+                </div>
+                <BarChart3 className="h-8 w-8 text-indigo-400" />
               </div>
             </CardContent>
           </Card>
@@ -519,36 +610,6 @@ export function FuturisticDashboard() {
                 </div>
               </CardContent>
             </Card>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card className="bg-blue-500/10 border-blue-500/30">
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-5 w-5 text-blue-400" />
-                    <CardTitle className="text-blue-400">Short-Term Outlook</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-slate-300 leading-relaxed">
-                    {analysisData.technical_indicators.short_term_outlook}
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-purple-500/10 border-purple-500/30">
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-5 w-5 text-purple-400" />
-                    <CardTitle className="text-purple-400">Long-Term Outlook</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-slate-300 leading-relaxed">
-                    {analysisData.technical_indicators.long_term_outlook}
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
 
             {analysisData.trade_setup && (
               <Card className="bg-orange-500/10 border-orange-500/30">
