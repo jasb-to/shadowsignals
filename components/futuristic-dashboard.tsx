@@ -159,15 +159,25 @@ export function FuturisticDashboard() {
     setIsSearching(true)
 
     try {
-      // Get analysis for the selected token
+      console.log("[v0] Calling analysis API for token:", token.id)
       const analysisResponse = await fetch(`/api/analysis?id=${encodeURIComponent(token.id)}`)
+      console.log("[v0] Analysis API response status:", analysisResponse.status)
       const analysisData = await analysisResponse.json()
+      console.log("[v0] Analysis API response data:", analysisData)
 
       if (analysisData.success) {
+        console.log("[v0] Setting analysis data with timeframes:", {
+          hasShortTerm: !!analysisData.data.short_term_analysis,
+          hasLongTerm: !!analysisData.data.long_term_analysis,
+        })
         setAnalysisData(analysisData.data)
+      } else {
+        console.error("[v0] Analysis API failed:", analysisData.error)
+        setAnalysisData(null)
       }
     } catch (error) {
-      console.error("Analysis failed:", error)
+      console.error("[v0] Analysis failed:", error)
+      setAnalysisData(null)
     } finally {
       setIsSearching(false)
     }
