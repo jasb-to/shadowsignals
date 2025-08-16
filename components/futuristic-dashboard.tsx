@@ -65,7 +65,7 @@ interface AnalysisResult {
 
 export function FuturisticDashboard() {
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedToken, setSelectedToken] = useState<string | null>(null)
+  const [selectedToken, setSelectedToken] = useState<any | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
@@ -73,6 +73,7 @@ export function FuturisticDashboard() {
   const [marketData, setMarketData] = useState<MarketOverview | null>(null)
   const [lastUpdated, setLastUpdated] = useState<string>("")
   const [errorMessage, setErrorMessage] = useState<string>("")
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
 
   const debounceSearch = useCallback(
     (() => {
@@ -152,34 +153,52 @@ export function FuturisticDashboard() {
     }
   }
 
-  const selectToken = async (token: SearchResult) => {
-    setSelectedToken(token.symbol.toUpperCase())
-    setSearchQuery(`${token.symbol.toUpperCase()} - ${token.name}`)
-    setShowDropdown(false)
-    setIsSearching(true)
+  const selectToken = async (token: any) => {
+    if (selectedToken && selectedToken.id === token.id && analysisData) {
+      console.log("[v0] Token already analyzed, skipping duplicate request:", token.id)
+      return
+    }
+
+    setSelectedToken(token)
+    setAnalysisData(null)
+    setIsAnalyzing(true)
 
     try {
       console.log("[v0] Calling analysis API for token:", token.id)
-      const analysisResponse = await fetch(`/api/analysis?id=${encodeURIComponent(token.id)}`)
-      console.log("[v0] Analysis API response status:", analysisResponse.status)
-      const analysisData = await analysisResponse.json()
-      console.log("[v0] Analysis API response data:", analysisData)
+      const response = await fetch(`/api/analysis?id=${token.id}`)
+      console.log("[v0] Analysis API response status:", response.status)
 
-      if (analysisData.success) {
-        console.log("[v0] Setting analysis data with timeframes:", {
-          hasShortTerm: !!analysisData.data.short_term_analysis,
-          hasLongTerm: !!analysisData.data.long_term_analysis,
-        })
-        setAnalysisData(analysisData.data)
+      if (response.ok) {
+        const result = await response.json()
+        console.log("[v0] Analysis API response data:", JSON.stringify(result).substring(0, 500) + "...")
+
+        if (result.success && result.data) {
+          console.log("[v0] Analysis data keys:", Object.keys(result.data))
+          console.log("[v0] Has short_term_analysis:", !!result.data.short_term_analysis)
+          console.log("[v0] Has long_term_analysis:", !!result.data.long_term_analysis)
+
+          if (result.data.short_term_analysis) {
+            console.log("[v0] Short-term analysis:", result.data.short_term_analysis)
+          }
+          if (result.data.long_term_analysis) {
+            console.log("[v0] Long-term analysis:", result.data.long_term_analysis)
+          }
+
+          setAnalysisData(result.data)
+          console.log("[v0] Setting analysis data with timeframes:", {
+            hasShortTerm: !!result.data.short_term_analysis,
+            hasLongTerm: !!result.data.long_term_analysis,
+          })
+        } else {
+          console.error("[v0] Analysis API returned error:", result.error)
+        }
       } else {
-        console.error("[v0] Analysis API failed:", analysisData.error)
-        setAnalysisData(null)
+        console.error("[v0] Analysis API request failed:", response.status)
       }
     } catch (error) {
-      console.error("[v0] Analysis failed:", error)
-      setAnalysisData(null)
+      console.error("[v0] Analysis API error:", error)
     } finally {
-      setIsSearching(false)
+      setIsAnalyzing(false)
     }
   }
 
@@ -463,7 +482,7 @@ export function FuturisticDashboard() {
                   className="w-full px-4 py-3 text-left hover:bg-slate-800 transition-colors border-b border-slate-800 last:border-b-0 flex items-center gap-3"
                 >
                   <div className="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center">
-                    <span className="text-cyan-400 font-bold text-sm">{result.symbol.slice(0, 1)}</span>
+                    <span className="text-cyan-400 font-bold text-sm">{result.symbol.slice(0, 1).toUpperCase()}</span>
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
@@ -488,10 +507,14 @@ export function FuturisticDashboard() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-full bg-cyan-500/20 flex items-center justify-center">
-                      <span className="text-cyan-400 font-bold text-sm">{selectedToken.slice(0, 1)}</span>
+                      <span className="text-cyan-400 font-bold text-sm">
+                        {selectedToken.symbol?.slice(0, 1).toUpperCase() || "T"}
+                      </span>
                     </div>
                     <div>
-                      <CardTitle className="text-xl text-white">{selectedToken}/USDT Confluence Analysis</CardTitle>
+                      <CardTitle className="text-xl text-white">
+                        {selectedToken.symbol.toUpperCase()}/USDT Confluence Analysis
+                      </CardTitle>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

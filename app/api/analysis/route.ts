@@ -610,6 +610,15 @@ export async function GET(request: NextRequest) {
     // First get token data
     const tokenResponse = await fetch(`${request.nextUrl.origin}/api/tokens?id=${encodeURIComponent(tokenId)}`)
 
+    if (tokenResponse.status === 404) {
+      const tokenError = await tokenResponse.json()
+      const errorResponse: ApiResponse<AnalysisResult> = {
+        success: false,
+        error: tokenError.error || "Token data not available right now, please try again shortly.",
+      }
+      return NextResponse.json(errorResponse, { status: 404 })
+    }
+
     if (!tokenResponse.ok) {
       throw new Error("Failed to fetch token data")
     }
@@ -617,7 +626,11 @@ export async function GET(request: NextRequest) {
     const tokenData = (await tokenResponse.json()) as ApiResponse<CryptoToken>
 
     if (!tokenData.success || !tokenData.data) {
-      throw new Error("Invalid token data received")
+      const errorResponse: ApiResponse<AnalysisResult> = {
+        success: false,
+        error: tokenData.error || "Token data not available right now, please try again shortly.",
+      }
+      return NextResponse.json(errorResponse, { status: 404 })
     }
 
     // Generate analysis
