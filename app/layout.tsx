@@ -22,6 +22,7 @@ export const metadata: Metadata = {
   generator: "Shadow Signals",
   other: {
     "google-adsense-account": "ca-pub-9833828370676451",
+    coinzilla: "e000f079501dfbcb8ff36205bb8dfaa9",
   },
   icons: {
     icon: [
