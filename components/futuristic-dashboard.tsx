@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
+import { ShadowSignalsLogo } from "./shadow-signals-logo"
 import {
   TrendingUp,
   DollarSign,
@@ -284,10 +285,7 @@ export function FuturisticDashboard() {
       <header className="border-b border-slate-800 bg-slate-950/95 backdrop-blur-sm">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-white">Shadow Signals</h1>
-              <p className="text-slate-400 text-sm">USDT Trading Pairs & Confluence Analysis</p>
-            </div>
+            <ShadowSignalsLogo />
             <div className="flex items-center gap-4">
               <span className="text-sm text-slate-400">Last updated: {lastUpdated || "Loading..."}</span>
               <Button
