@@ -74,6 +74,7 @@ export function FuturisticDashboard() {
   const [lastUpdated, setLastUpdated] = useState<string>("")
   const [errorMessage, setErrorMessage] = useState<string>("")
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analyzingTokens, setAnalyzingTokens] = useState<Set<string>>(new Set())
 
   const debounceSearch = useCallback(
     (() => {
@@ -154,11 +155,15 @@ export function FuturisticDashboard() {
   }
 
   const selectToken = async (token: any) => {
-    if (selectedToken && selectedToken.id === token.id && analysisData) {
-      console.log("[v0] Token already analyzed, skipping duplicate request:", token.id)
+    if (analyzingTokens.has(token.id) || (selectedToken && selectedToken.id === token.id && analysisData)) {
+      console.log("[v0] Token already analyzed or being analyzed, skipping duplicate request:", token.id)
       return
     }
 
+    setShowDropdown(false)
+    setSearchQuery(token.symbol.toUpperCase())
+
+    setAnalyzingTokens((prev) => new Set(prev).add(token.id))
     setSelectedToken(token)
     setAnalysisData(null)
     setIsAnalyzing(true)
@@ -199,6 +204,11 @@ export function FuturisticDashboard() {
       console.error("[v0] Analysis API error:", error)
     } finally {
       setIsAnalyzing(false)
+      setAnalyzingTokens((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(token.id)
+        return newSet
+      })
     }
   }
 
