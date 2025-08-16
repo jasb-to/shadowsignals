@@ -23,6 +23,10 @@ import {
   Bitcoin,
   PieChart,
   Coins,
+  Clock,
+  CheckCircle,
+  XCircle,
+  Gauge,
 } from "lucide-react"
 
 interface MarketOverview {
@@ -53,6 +57,8 @@ interface AnalysisResult {
   signals: any[]
   technical_indicators: any
   trade_setup: any
+  short_term_analysis: any
+  long_term_analysis: any
   ai_insight: string
   last_analysis: string
 }
@@ -501,6 +507,212 @@ export function FuturisticDashboard() {
                 </div>
               </CardHeader>
             </Card>
+
+            {/* Short-term and Long-term Analysis Grid */}
+            {(analysisData.short_term_analysis || analysisData.long_term_analysis) && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Short-term Analysis (1-4 Hours) */}
+                {analysisData.short_term_analysis && (
+                  <Card className="bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border-cyan-500/30">
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-5 w-5 text-cyan-400" />
+                          <CardTitle className="text-cyan-400">
+                            {analysisData.short_term_analysis.timeframe_label}
+                          </CardTitle>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            className={`${
+                              analysisData.short_term_analysis.signal.includes("Buy")
+                                ? "bg-green-500/20 text-green-400 border-green-500/30"
+                                : analysisData.short_term_analysis.signal.includes("Sell")
+                                  ? "bg-red-500/20 text-red-400 border-red-500/30"
+                                  : "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+                            }`}
+                          >
+                            {analysisData.short_term_analysis.signal}
+                          </Badge>
+                          <Badge className="bg-cyan-500/20 text-cyan-400 border-cyan-500/30">
+                            {analysisData.short_term_analysis.confidence}%
+                          </Badge>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Momentum Score */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm text-slate-300">Momentum Score</span>
+                          <span className="text-cyan-400 font-bold">
+                            {analysisData.short_term_analysis.momentum_score}/100
+                          </span>
+                        </div>
+                        <Progress
+                          value={analysisData.short_term_analysis.momentum_score}
+                          className="h-2 bg-slate-800"
+                        />
+                      </div>
+
+                      {/* Key Levels */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-green-500/10 border border-green-500/30 p-3 rounded-lg">
+                          <div className="text-xs text-green-400 mb-1">Support</div>
+                          <div className="text-sm font-bold text-white">
+                            {formatPrice(analysisData.short_term_analysis.key_levels.support)}
+                          </div>
+                        </div>
+                        <div className="bg-red-500/10 border border-red-500/30 p-3 rounded-lg">
+                          <div className="text-xs text-red-400 mb-1">Resistance</div>
+                          <div className="text-sm font-bold text-white">
+                            {formatPrice(analysisData.short_term_analysis.key_levels.resistance)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Aligned Indicators */}
+                      <div>
+                        <h4 className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-green-400" />
+                          Aligned Indicators ({analysisData.short_term_analysis.aligned_indicators.length})
+                        </h4>
+                        <div className="space-y-1">
+                          {analysisData.short_term_analysis.aligned_indicators.map((indicator: string, idx: number) => (
+                            <div key={idx} className="text-xs text-green-400 bg-green-500/10 px-2 py-1 rounded">
+                              • {indicator}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Conflicting Indicators */}
+                      {analysisData.short_term_analysis.conflicting_indicators.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                            <XCircle className="h-4 w-4 text-red-400" />
+                            Conflicting Signals ({analysisData.short_term_analysis.conflicting_indicators.length})
+                          </h4>
+                          <div className="space-y-1">
+                            {analysisData.short_term_analysis.conflicting_indicators.map(
+                              (indicator: string, idx: number) => (
+                                <div key={idx} className="text-xs text-red-400 bg-red-500/10 px-2 py-1 rounded">
+                                  • {indicator}
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Justification */}
+                      <div className="bg-cyan-500/10 border-l-4 border-cyan-400 p-3 rounded">
+                        <p className="text-xs text-slate-300">{analysisData.short_term_analysis.justification}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Long-term Analysis (4-24 Hours) */}
+                {analysisData.long_term_analysis && (
+                  <Card className="bg-gradient-to-br from-purple-500/10 to-indigo-500/10 border-purple-500/30">
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Gauge className="h-5 w-5 text-purple-400" />
+                          <CardTitle className="text-purple-400">
+                            {analysisData.long_term_analysis.timeframe_label}
+                          </CardTitle>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            className={`${
+                              analysisData.long_term_analysis.signal.includes("Buy")
+                                ? "bg-green-500/20 text-green-400 border-green-500/30"
+                                : analysisData.long_term_analysis.signal.includes("Sell")
+                                  ? "bg-red-500/20 text-red-400 border-red-500/30"
+                                  : "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+                            }`}
+                          >
+                            {analysisData.long_term_analysis.signal}
+                          </Badge>
+                          <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
+                            {analysisData.long_term_analysis.confidence}%
+                          </Badge>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Momentum Score */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm text-slate-300">Momentum Score</span>
+                          <span className="text-purple-400 font-bold">
+                            {analysisData.long_term_analysis.momentum_score}/100
+                          </span>
+                        </div>
+                        <Progress value={analysisData.long_term_analysis.momentum_score} className="h-2 bg-slate-800" />
+                      </div>
+
+                      {/* Key Levels */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-green-500/10 border border-green-500/30 p-3 rounded-lg">
+                          <div className="text-xs text-green-400 mb-1">Support</div>
+                          <div className="text-sm font-bold text-white">
+                            {formatPrice(analysisData.long_term_analysis.key_levels.support)}
+                          </div>
+                        </div>
+                        <div className="bg-red-500/10 border border-red-500/30 p-3 rounded-lg">
+                          <div className="text-xs text-red-400 mb-1">Resistance</div>
+                          <div className="text-sm font-bold text-white">
+                            {formatPrice(analysisData.long_term_analysis.key_levels.resistance)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Aligned Indicators */}
+                      <div>
+                        <h4 className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-green-400" />
+                          Aligned Indicators ({analysisData.long_term_analysis.aligned_indicators.length})
+                        </h4>
+                        <div className="space-y-1">
+                          {analysisData.long_term_analysis.aligned_indicators.map((indicator: string, idx: number) => (
+                            <div key={idx} className="text-xs text-green-400 bg-green-500/10 px-2 py-1 rounded">
+                              • {indicator}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Conflicting Indicators */}
+                      {analysisData.long_term_analysis.conflicting_indicators.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                            <XCircle className="h-4 w-4 text-red-400" />
+                            Conflicting Signals ({analysisData.long_term_analysis.conflicting_indicators.length})
+                          </h4>
+                          <div className="space-y-1">
+                            {analysisData.long_term_analysis.conflicting_indicators.map(
+                              (indicator: string, idx: number) => (
+                                <div key={idx} className="text-xs text-red-400 bg-red-500/10 px-2 py-1 rounded">
+                                  • {indicator}
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Justification */}
+                      <div className="bg-purple-500/10 border-l-4 border-purple-400 p-3 rounded">
+                        <p className="text-xs text-slate-300">{analysisData.long_term_analysis.justification}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
 
             {/* AI Recommendation */}
             <Card className="bg-slate-900/50 border-slate-800">

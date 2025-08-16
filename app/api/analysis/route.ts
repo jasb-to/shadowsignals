@@ -423,10 +423,147 @@ class AnalysisEngine {
     return insight
   }
 
+  private generateTimeframeAnalysis(
+    token: CryptoToken,
+    indicators: any,
+    timeframe: "short" | "long",
+  ): {
+    timeframe_label: string
+    signal: "Strong Buy" | "Buy" | "Hold" | "Sell" | "Strong Sell"
+    confidence: number
+    aligned_indicators: string[]
+    conflicting_indicators: string[]
+    key_levels: { support: number; resistance: number }
+    momentum_score: number
+    justification: string
+  } {
+    const isShortTerm = timeframe === "short"
+    const timeframeLabel = isShortTerm ? "1-4 Hour Analysis" : "4-24 Hour Analysis"
+
+    let signal: "Strong Buy" | "Buy" | "Hold" | "Sell" | "Strong Sell" = "Hold"
+    let confidence = 75
+    const alignedIndicators: string[] = []
+    const conflictingIndicators: string[] = []
+
+    const rsi = indicators.rsi
+    const stochRSI = indicators.stochastic_rsi
+    const priceChange24h = token.price_change_percentage_24h
+    const trendDirection = indicators.trend_direction
+
+    // RSI Analysis
+    if (rsi < 30) {
+      alignedIndicators.push(`RSI Oversold (${rsi.toFixed(1)})`)
+      signal = rsi < 20 ? "Strong Buy" : "Buy"
+      confidence += 10
+    } else if (rsi > 70) {
+      alignedIndicators.push(`RSI Overbought (${rsi.toFixed(1)})`)
+      signal = rsi > 80 ? "Strong Sell" : "Sell"
+      confidence += 10
+    } else if (rsi >= 45 && rsi <= 55) {
+      conflictingIndicators.push(`RSI Neutral (${rsi.toFixed(1)})`)
+    }
+
+    // Stochastic RSI for short-term precision
+    if (isShortTerm) {
+      if (stochRSI < 20) {
+        alignedIndicators.push(`Stoch RSI Oversold (${stochRSI.toFixed(1)})`)
+        if (signal === "Hold") signal = "Buy"
+        confidence += 8
+      } else if (stochRSI > 80) {
+        alignedIndicators.push(`Stoch RSI Overbought (${stochRSI.toFixed(1)})`)
+        if (signal === "Hold") signal = "Sell"
+        confidence += 8
+      }
+    }
+
+    // Trend Direction Alignment
+    if (trendDirection === "Bullish") {
+      alignedIndicators.push("Bullish Trend Direction")
+      if (signal === "Hold") signal = "Buy"
+      confidence += isShortTerm ? 6 : 8
+    } else if (trendDirection === "Bearish") {
+      alignedIndicators.push("Bearish Trend Direction")
+      if (signal === "Hold") signal = "Sell"
+      confidence += isShortTerm ? 6 : 8
+    } else {
+      conflictingIndicators.push("Neutral Trend Direction")
+    }
+
+    // Price Momentum Analysis
+    const momentumThreshold = isShortTerm ? 3 : 8
+    if (priceChange24h > momentumThreshold) {
+      alignedIndicators.push(`Positive Momentum (+${priceChange24h.toFixed(1)}%)`)
+      if (signal === "Hold" || signal === "Buy") signal = signal === "Hold" ? "Buy" : "Strong Buy"
+      confidence += 7
+    } else if (priceChange24h < -momentumThreshold) {
+      alignedIndicators.push(`Negative Momentum (${priceChange24h.toFixed(1)}%)`)
+      if (signal === "Hold" || signal === "Sell") signal = signal === "Hold" ? "Sell" : "Strong Sell"
+      confidence += 7
+    }
+
+    // Volume Confirmation
+    if (indicators.volume_indicator === "High") {
+      alignedIndicators.push("High Volume Confirmation")
+      confidence += 5
+    } else if (indicators.volume_indicator === "Low") {
+      conflictingIndicators.push("Low Volume Warning")
+      confidence -= 3
+    }
+
+    // Support/Resistance Levels
+    const currentPrice = token.current_price
+    const support = indicators.support_levels[0]
+    const resistance = indicators.resistance_levels[0]
+
+    const distanceToSupport = ((currentPrice - support) / currentPrice) * 100
+    const distanceToResistance = ((resistance - currentPrice) / currentPrice) * 100
+
+    if (distanceToSupport < 2) {
+      alignedIndicators.push("Near Support Level")
+      if (signal === "Hold") signal = "Buy"
+    } else if (distanceToResistance < 2) {
+      alignedIndicators.push("Near Resistance Level")
+      if (signal === "Hold") signal = "Sell"
+    }
+
+    // Calculate momentum score (0-100)
+    const momentumScore = Math.max(0, Math.min(100, 50 + priceChange24h * 2 + (rsi - 50) + (stochRSI - 50) / 2))
+
+    // Generate justification
+    let justification = `${timeframeLabel}: `
+    if (alignedIndicators.length >= 3) {
+      justification += `Strong ${signal.toLowerCase()} signal with ${alignedIndicators.length} aligned indicators. `
+    } else if (alignedIndicators.length >= 2) {
+      justification += `Moderate ${signal.toLowerCase()} signal with ${alignedIndicators.length} supporting factors. `
+    } else {
+      justification += `Weak signal - insufficient indicator alignment for confident ${signal.toLowerCase()}. `
+      signal = "Hold"
+      confidence = Math.min(confidence, 60)
+    }
+
+    if (conflictingIndicators.length > 0) {
+      justification += `Note: ${conflictingIndicators.length} conflicting indicator(s) present.`
+      confidence -= conflictingIndicators.length * 3
+    }
+
+    return {
+      timeframe_label: timeframeLabel,
+      signal,
+      confidence: Math.max(50, Math.min(95, confidence)),
+      aligned_indicators: alignedIndicators,
+      conflicting_indicators: conflictingIndicators,
+      key_levels: { support, resistance },
+      momentum_score: Math.round(momentumScore),
+      justification,
+    }
+  }
+
   async analyzeToken(token: CryptoToken): Promise<
     AnalysisResult & {
       trade_setup: any
       technical_indicators: any
+      short_term_analysis: any
+      long_term_analysis: any
     }
   > {
     const technicalIndicators = this.generateTechnicalIndicators(token)
@@ -437,6 +574,9 @@ class AnalysisEngine {
     const primarySignal = signals.find((s) => s.timeframe === "1d") || signals[0]
     const tradeSetup = this.generateTradeSetup(token, technicalIndicators, primarySignal)
 
+    const shortTermAnalysis = this.generateTimeframeAnalysis(token, technicalIndicators, "short")
+    const longTermAnalysis = this.generateTimeframeAnalysis(token, technicalIndicators, "long")
+
     const aiInsight = await this.generateAIInsight(token, signals, tradeSetup)
 
     return {
@@ -444,6 +584,8 @@ class AnalysisEngine {
       signals,
       technical_indicators: technicalIndicators,
       trade_setup: tradeSetup,
+      short_term_analysis: shortTermAnalysis,
+      long_term_analysis: longTermAnalysis,
       ai_insight: aiInsight,
       last_analysis: new Date().toISOString(),
     }
