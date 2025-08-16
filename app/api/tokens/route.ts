@@ -26,7 +26,7 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout 
   }
 }
 
-async function fetchWithRetry(url: string, maxRetries = 2): Promise<Response> {
+async function fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const response = await fetchWithTimeout(url)
@@ -34,10 +34,9 @@ async function fetchWithRetry(url: string, maxRetries = 2): Promise<Response> {
         return response
       }
 
-      // If it's a rate limit error (429), wait longer
       if (response.status === 429 && attempt < maxRetries) {
-        const delay = Math.pow(2, attempt) * 2000 // 2s, 4s, 8s
-        console.log(`Rate limited, waiting ${delay}ms before retry ${attempt + 1}`)
+        const delay = Math.pow(2, attempt) * 5000 // 5s, 10s, 20s for rate limits
+        console.log(`[v0] Rate limited, waiting ${delay}ms before retry ${attempt + 1}`)
         await new Promise((resolve) => setTimeout(resolve, delay))
         continue
       }
@@ -50,8 +49,8 @@ async function fetchWithRetry(url: string, maxRetries = 2): Promise<Response> {
       }
 
       // Wait before retry
-      const delay = Math.pow(2, attempt) * 1000 // 1s, 2s
-      console.log(`Attempt ${attempt + 1} failed, retrying in ${delay}ms`)
+      const delay = Math.pow(2, attempt) * 1000 // 1s, 2s, 4s
+      console.log(`[v0] Attempt ${attempt + 1} failed, retrying in ${delay}ms`)
       await new Promise((resolve) => setTimeout(resolve, delay))
     }
   }
@@ -80,6 +79,9 @@ export async function GET(request: NextRequest) {
   }
 
   console.log(`[v0] Fetching token data for: ${tokenId}`)
+
+  let coinGeckoError = ""
+  let coinPaprikaError = ""
 
   try {
     // Try CoinGecko first with retry logic
@@ -126,7 +128,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(apiResponse)
     }
   } catch (error) {
-    console.error(`[v0] CoinGecko failed for ${tokenId}:`, error)
+    coinGeckoError = error instanceof Error ? error.message : String(error)
+    console.error(`[v0] CoinGecko failed for ${tokenId}:`, coinGeckoError)
   }
 
   // Try CoinPaprika as fallback with retry logic
@@ -179,14 +182,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(apiResponse)
     }
   } catch (error) {
-    console.error(`[v0] CoinPaprika failed for ${tokenId}:`, error)
+    coinPaprikaError = error instanceof Error ? error.message : String(error)
+    console.error(`[v0] CoinPaprika failed for ${tokenId}:`, coinPaprikaError)
   }
 
   console.error(`[v0] No data found for token: ${tokenId}`)
 
+  let errorMessage = "Cannot find this data right now, try again shortly."
+  if (coinGeckoError.includes("429") && coinPaprikaError.includes("404")) {
+    errorMessage =
+      "Token data temporarily unavailable due to API limits. This token may be very new or not widely tracked yet. Please try again in a few minutes."
+  }
+
   const errorResponse: ApiResponse<CryptoToken> = {
     success: false,
-    error: `Cannot find this data right now, try again shortly.`,
+    error: errorMessage,
   }
 
   return NextResponse.json(errorResponse, { status: 404 })
