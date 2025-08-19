@@ -74,3 +74,22 @@ export interface ApiResponse<T> {
   error?: string
   fallback?: boolean
 }
+
+export interface CycleAnalysis {
+  bull_market_progress: number // 0-100% how far into bull run
+  bear_market_distance: number // 0-100% how close to bear bottom
+  pi_cycle_signal: "bullish" | "neutral" | "bearish"
+  mvrv_z_score: number
+  cycle_phase: "accumulation" | "markup" | "distribution" | "markdown"
+  next_halving_days: number
+  predicted_top_date: string
+  predicted_bottom_date: string
+  confluence_indicators: {
+    open_interest_signal: "bullish" | "neutral" | "bearish"
+    btc_dominance_trend: "rising" | "stable" | "falling"
+    eth_btc_ratio: number
+    altcoin_season_signal: "pre-alt" | "alt-season" | "post-alt"
+    funding_rates_health: "healthy" | "neutral" | "overheated"
+  }
+  bull_top_confluence_score: number // 0-100% confidence in approaching top
+}

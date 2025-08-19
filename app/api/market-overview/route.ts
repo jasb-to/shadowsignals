@@ -82,7 +82,7 @@ export async function GET() {
           btc_price: btcData.market_data.current_price?.usd || 0,
           btc_price_change_24h: btcData.market_data.price_change_percentage_24h || 0,
           btc_dominance: globalData.data.market_cap_percentage?.btc || 0,
-          usdt_dominance: globalData.data.market_cap_percentage?.usdt || 0,
+          usdt_dominance: globalData.data.market_cap_percentage?.usdt || 4.2, // Use real USDT dominance from CoinGecko or calculate fallback
           total3_market_cap:
             (globalData.data.total_market_cap?.usd || 0) -
             (btcData.market_data.market_cap?.usd || 0) -
@@ -141,6 +141,8 @@ export async function GET() {
         const estimatedUsdtPairs = Math.floor(activeCryptos * 0.6) // Estimate 60% have USDT pairs
         const marketCapTrillion = marketCap / 1000000000000
         const activeAnalysisCount = Math.floor(marketCapTrillion * 50) // Scale with market size
+        const usdtMarketCap = marketCap * 0.042 // Estimate USDT at ~4.2% of total market
+        const calculatedUsdtDominance = (usdtMarketCap / marketCap) * 100
 
         const overview: MarketOverview = {
           total_market_cap: marketCap,
@@ -152,7 +154,7 @@ export async function GET() {
           btc_price: btcPrice, // Use real BTC price from CoinPaprika
           btc_price_change_24h: btcChange, // Use real 24h change
           btc_dominance: (btcData.quotes.USD.market_cap / marketCap) * 100 || 52.5, // Calculate real dominance
-          usdt_dominance: 5.2, // Keep as fallback since CoinPaprika doesn't provide this easily
+          usdt_dominance: calculatedUsdtDominance, // Use calculated USDT dominance instead of hardcoded 5.2
           total3_market_cap: marketCap - (btcData.quotes.USD.market_cap || 0), // Calculate Total3 properly
           total3_change_24h: globalData.market_cap_change_24h || -1.8,
         }

@@ -14,7 +14,6 @@ import {
   Activity,
   Search,
   RefreshCw,
-  Zap,
   BarChart3,
   Target,
   Shield,
@@ -28,6 +27,7 @@ import {
   CheckCircle,
   XCircle,
   Gauge,
+  Zap,
 } from "lucide-react"
 
 interface MarketOverview {
@@ -64,6 +64,25 @@ interface AnalysisResult {
   last_analysis: string
 }
 
+interface CycleAnalysis {
+  bull_market_progress: number
+  bear_market_distance: number
+  pi_cycle_signal: "bullish" | "neutral" | "bearish"
+  mvrv_z_score: number
+  cycle_phase: "accumulation" | "markup" | "distribution" | "markdown"
+  next_halving_days: number
+  predicted_top_date: string
+  predicted_bottom_date: string
+  bull_top_confluence_score: number
+  confluence_indicators: {
+    open_interest_signal: string
+    btc_dominance_trend: string
+    altcoin_season_signal: string
+    eth_btc_ratio: number
+    funding_rates_health: string
+  }
+}
+
 export function FuturisticDashboard() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedToken, setSelectedToken] = useState<any | null>(null)
@@ -76,6 +95,7 @@ export function FuturisticDashboard() {
   const [errorMessage, setErrorMessage] = useState<string>("")
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analyzingTokens, setAnalyzingTokens] = useState<Set<string>>(new Set())
+  const [cycleData, setCycleData] = useState<CycleAnalysis | null>(null)
 
   const debounceSearch = useCallback(
     (() => {
@@ -249,13 +269,37 @@ export function FuturisticDashboard() {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
+  const fetchCycleData = async () => {
+    try {
+      console.log("[v0] Fetching cycle analysis data")
+      const response = await fetch("/api/cycle-analysis")
+      const data = await response.json()
+      console.log("[v0] Cycle analysis response:", data)
+      if (data.success) {
+        console.log("[v0] Setting cycle data:", data.data)
+        setCycleData(data.data)
+      } else {
+        console.log("[v0] Cycle analysis failed:", data.error)
+      }
+    } catch (error) {
+      console.error("[v0] Failed to fetch cycle data:", error)
+    }
+  }
+
   useEffect(() => {
     const initialFetchTimer = setTimeout(() => {
       fetchMarketData()
     }, 2000)
 
+    setTimeout(() => {
+      fetchCycleData()
+    }, 3000)
+
     const intervalTimer = setTimeout(() => {
-      const interval = setInterval(fetchMarketData, 60000) // Update every minute
+      const interval = setInterval(() => {
+        fetchMarketData()
+        fetchCycleData()
+      }, 60000) // Update every minute
       return () => clearInterval(interval)
     }, 5000)
 
@@ -303,7 +347,7 @@ export function FuturisticDashboard() {
       </header>
 
       <div className="px-6 py-6 space-y-6">
-        {/* Data Cards - First Row */}
+        {/* Data Cards - Reorganized Layout */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="bg-slate-900/50 border-slate-800 hover:border-green-500/50 transition-colors">
             <CardHeader className="pb-2">
@@ -345,43 +389,6 @@ export function FuturisticDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="bg-slate-900/50 border-slate-800 hover:border-purple-500/50 transition-colors">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-slate-400">USDT Pairs</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-2xl font-bold text-white">
-                    {marketData ? marketData.usdt_pairs_count.toLocaleString() : "Loading..."}
-                  </div>
-                  <div className="text-sm text-slate-400">Active</div>
-                </div>
-                <TrendingUp className="h-8 w-8 text-purple-400" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-slate-900/50 border-slate-800 hover:border-cyan-500/50 transition-colors">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-slate-400">Active Analysis</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-2xl font-bold text-white">
-                    {marketData ? marketData.active_analysis_count.toLocaleString() : "Loading..."}
-                  </div>
-                  <div className="text-sm text-slate-400">Running</div>
-                </div>
-                <Zap className="h-8 w-8 text-cyan-400" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Data Cards - Second Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="bg-slate-900/50 border-slate-800 hover:border-orange-500/50 transition-colors">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-slate-400">BTC Price</CardTitle>
@@ -421,7 +428,10 @@ export function FuturisticDashboard() {
               </div>
             </CardContent>
           </Card>
+        </div>
 
+        {/* Second Row - Additional Market Data */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="bg-slate-900/50 border-slate-800 hover:border-teal-500/50 transition-colors">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-slate-400">USDT Dominance</CardTitle>
@@ -457,10 +467,119 @@ export function FuturisticDashboard() {
                       : "..."}
                   </div>
                 </div>
-                <BarChart3 className="h-8 w-8 text-indigo-400" />
+                <Activity className="h-8 w-8 text-indigo-400" />
               </div>
             </CardContent>
           </Card>
+
+          <Card className="bg-slate-900/50 border-slate-800 hover:border-purple-500/50 transition-colors">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-slate-400">USDT Pairs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-white">
+                    {marketData?.usdt_pairs_count ? marketData.usdt_pairs_count.toLocaleString() : "Loading..."}
+                  </div>
+                  <div className="text-sm text-slate-400">Active</div>
+                </div>
+                <TrendingUp className="h-8 w-8 text-purple-400" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-slate-900/50 border-slate-800 hover:border-cyan-500/50 transition-colors">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-slate-400">Active Analysis</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-white">
+                    {marketData?.active_analysis_count
+                      ? marketData.active_analysis_count.toLocaleString()
+                      : "Loading..."}
+                  </div>
+                  <div className="text-sm text-slate-400">Running</div>
+                </div>
+                <Zap className="h-8 w-8 text-cyan-400" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Cycle Analysis Cards - Dedicated Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 rounded-xl p-6 hover:border-purple-400/50 transition-colors cursor-pointer">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-purple-300">Bull Market Top</h3>
+              <TrendingUp className="w-6 h-6 text-purple-400" />
+            </div>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-purple-200">Progress:</span>
+                <span className="text-2xl font-bold text-purple-300">{cycleData?.bull_market_progress || 0}%</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-purple-200">Est. Top:</span>
+                <span className="text-lg font-semibold text-purple-300">
+                  {cycleData?.predicted_top_date || "Loading..."}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-purple-200">Confluence:</span>
+                <span className="text-lg font-semibold text-purple-300">
+                  {cycleData?.bull_top_confluence_score || 0}%
+                </span>
+              </div>
+              <div className="mt-4 pt-3 border-t border-purple-500/20">
+                <p className="text-xs text-purple-400/70 leading-relaxed">
+                  Based on: Pi Cycle, MVRV Z-Score, Open Interest, BTC Dominance, ETH/BTC Ratio
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-cyan-900/20 to-blue-900/20 border border-cyan-500/30 rounded-xl p-6 hover:border-cyan-400/50 transition-colors cursor-pointer">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-cyan-300">Altseason Top</h3>
+              <Zap className="w-6 h-6 text-cyan-400" />
+            </div>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-cyan-200">Alt Progress:</span>
+                <span className="text-2xl font-bold text-cyan-300">
+                  {cycleData?.confluence_indicators?.altcoin_season_signal === "alt-season"
+                    ? "75%"
+                    : cycleData?.confluence_indicators?.altcoin_season_signal === "neutral"
+                      ? "25%"
+                      : "10%"}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-cyan-200">ETH/BTC:</span>
+                <span className="text-lg font-semibold text-cyan-300">
+                  {cycleData?.confluence_indicators?.eth_btc_ratio?.toFixed(4) || "0.0000"}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-cyan-200">Phase:</span>
+                <span className="text-sm font-medium text-cyan-300">
+                  {cycleData?.confluence_indicators?.altcoin_season_signal === "alt-season"
+                    ? "Large Caps"
+                    : cycleData?.confluence_indicators?.altcoin_season_signal === "neutral"
+                      ? "Rotation"
+                      : "BTC Dom"}
+                </span>
+              </div>
+              <div className="mt-4 pt-3 border-t border-cyan-500/20">
+                <p className="text-xs text-cyan-400/70 leading-relaxed">
+                  Based on: ETH/BTC Ratio, BTC Dominance Trend, Funding Rates, Open Interest, Market Rotation
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Enhanced Search Bar with Dropdown */}
@@ -794,6 +913,7 @@ export function FuturisticDashboard() {
               </CardContent>
             </Card>
 
+            {/* Technical Indicators */}
             <Card className="bg-slate-900/50 border-slate-800">
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -819,6 +939,67 @@ export function FuturisticDashboard() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
+                <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/30 p-4 rounded-lg">
+                  <h4 className="text-sm font-medium text-blue-400 mb-3 flex items-center gap-2">
+                    <Activity className="h-4 w-4" />
+                    Confluence Indicators Used in Analysis
+                  </h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                    <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
+                      <div className="text-slate-300 mb-1">RSI (14)</div>
+                      <div className="text-white font-bold">{analysisData.technical_indicators.rsi.toFixed(1)}</div>
+                    </div>
+                    <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
+                      <div className="text-slate-300 mb-1">Stochastic RSI</div>
+                      <div className="text-white font-bold">
+                        {analysisData.technical_indicators.stochastic_rsi !== undefined
+                          ? analysisData.technical_indicators.stochastic_rsi.toFixed(1)
+                          : "0.0"}
+                      </div>
+                    </div>
+                    <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
+                      <div className="text-slate-300 mb-1">MACD Signal</div>
+                      <div className="text-white font-bold">
+                        {analysisData.technical_indicators.macd_signal || "Neutral"}
+                      </div>
+                    </div>
+                    <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
+                      <div className="text-slate-300 mb-1">8/21 EMA Cross</div>
+                      <div className="text-white font-bold">
+                        {analysisData.technical_indicators.ema_cross_signal || "Neutral"}
+                      </div>
+                    </div>
+                    <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
+                      <div className="text-slate-300 mb-1">Volume Trend</div>
+                      <div className="text-white font-bold">
+                        {analysisData.technical_indicators.volume_trend || "Normal"}
+                      </div>
+                    </div>
+                    <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
+                      <div className="text-slate-300 mb-1">Price Action</div>
+                      <div className="text-white font-bold">
+                        {analysisData.technical_indicators.trend_direction || "Sideways"}
+                      </div>
+                    </div>
+                    <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
+                      <div className="text-slate-300 mb-1">Support/Resistance</div>
+                      <div className="text-white font-bold">
+                        {analysisData.technical_indicators.sr_strength || "Moderate"}
+                      </div>
+                    </div>
+                    <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
+                      <div className="text-slate-300 mb-1">Momentum</div>
+                      <div className="text-white font-bold">
+                        {analysisData.technical_indicators.momentum_score || "50"}/100
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 text-xs text-slate-400">
+                    These indicators are combined using AI confluence analysis to generate trading signals with
+                    confidence scores.
+                  </div>
+                </div>
+
                 {/* RSI and Stochastic RSI */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>

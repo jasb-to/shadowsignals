@@ -111,6 +111,132 @@ class AnalysisEngine {
     return `AI analysis for ${tokenSymbol}: Market conditions suggest monitoring key levels for potential trading opportunities.`
   }
 
+  private calculateEMA(prices: number[], period: number): number[] {
+    const ema = []
+    const multiplier = 2 / (period + 1)
+
+    // Start with SMA for first value
+    let sum = 0
+    for (let i = 0; i < Math.min(period, prices.length); i++) {
+      sum += prices[i]
+    }
+    ema[period - 1] = sum / period
+
+    // Calculate EMA for remaining values
+    for (let i = period; i < prices.length; i++) {
+      ema[i] = (prices[i] - ema[i - 1]) * multiplier + ema[i - 1]
+    }
+
+    return ema
+  }
+
+  private calculateMACD(prices: number[]): {
+    macd_line: number
+    signal_line: number
+    histogram: number
+    signal: "Bullish" | "Bearish" | "Neutral"
+  } {
+    if (prices.length < 26) {
+      return { macd_line: 0, signal_line: 0, histogram: 0, signal: "Neutral" }
+    }
+
+    const ema12 = this.calculateEMA(prices, 12)
+    const ema26 = this.calculateEMA(prices, 26)
+
+    // MACD line = EMA12 - EMA26
+    const macdValues = []
+    for (let i = 25; i < prices.length; i++) {
+      macdValues.push(ema12[i] - ema26[i])
+    }
+
+    // Signal line = EMA9 of MACD line
+    const signalEMA = this.calculateEMA(macdValues, 9)
+
+    const currentMACD = macdValues[macdValues.length - 1] || 0
+    const currentSignal = signalEMA[signalEMA.length - 1] || 0
+    const histogram = currentMACD - currentSignal
+
+    // Previous values for crossover detection
+    const prevMACD = macdValues[macdValues.length - 2] || 0
+    const prevSignal = signalEMA[signalEMA.length - 2] || 0
+
+    let signal: "Bullish" | "Bearish" | "Neutral" = "Neutral"
+
+    // Bullish crossover: MACD crosses above signal line
+    if (prevMACD <= prevSignal && currentMACD > currentSignal) {
+      signal = "Bullish"
+    }
+    // Bearish crossover: MACD crosses below signal line
+    else if (prevMACD >= prevSignal && currentMACD < currentSignal) {
+      signal = "Bearish"
+    }
+    // Trend continuation
+    else if (currentMACD > currentSignal && histogram > 0) {
+      signal = "Bullish"
+    } else if (currentMACD < currentSignal && histogram < 0) {
+      signal = "Bearish"
+    }
+
+    return {
+      macd_line: currentMACD,
+      signal_line: currentSignal,
+      histogram,
+      signal,
+    }
+  }
+
+  private calculate8_21_EMACrossover(prices: number[]): {
+    ema8: number
+    ema21: number
+    signal: "Bullish" | "Bearish" | "Neutral"
+    strength: "Strong" | "Weak"
+  } {
+    if (prices.length < 21) {
+      return { ema8: 0, ema21: 0, signal: "Neutral", strength: "Weak" }
+    }
+
+    const ema8Array = this.calculateEMA(prices, 8)
+    const ema21Array = this.calculateEMA(prices, 21)
+
+    const currentEMA8 = ema8Array[ema8Array.length - 1] || 0
+    const currentEMA21 = ema21Array[ema21Array.length - 1] || 0
+
+    // Previous values for crossover detection
+    const prevEMA8 = ema8Array[ema8Array.length - 2] || 0
+    const prevEMA21 = ema21Array[ema21Array.length - 2] || 0
+
+    let signal: "Bullish" | "Bearish" | "Neutral" = "Neutral"
+    let strength: "Strong" | "Weak" = "Weak"
+
+    // Calculate separation percentage for strength
+    const separation = Math.abs((currentEMA8 - currentEMA21) / currentEMA21) * 100
+    strength = separation > 2 ? "Strong" : "Weak"
+
+    // Bullish crossover: EMA8 crosses above EMA21
+    if (prevEMA8 <= prevEMA21 && currentEMA8 > currentEMA21) {
+      signal = "Bullish"
+      strength = "Strong" // Fresh crossovers are strong signals
+    }
+    // Bearish crossover: EMA8 crosses below EMA21
+    else if (prevEMA8 >= prevEMA21 && currentEMA8 < currentEMA21) {
+      signal = "Bearish"
+      strength = "Strong" // Fresh crossovers are strong signals
+    }
+    // Trend continuation
+    else if (currentEMA8 > currentEMA21) {
+      signal = "Bullish"
+    } else if (currentEMA8 < currentEMA21) {
+      signal = "Bearish"
+    }
+
+    return {
+      ema8: currentEMA8,
+      ema21: currentEMA21,
+      signal,
+      strength,
+    }
+  }
+
   private generateTechnicalIndicators(token: CryptoToken): TechnicalIndicators & {
     stochastic_rsi: number
     short_term_outlook: string
@@ -118,17 +244,32 @@ class AnalysisEngine {
     trend_direction: "Bullish" | "Bearish" | "Neutral"
     support_levels: number[]
     resistance_levels: number[]
+    macd: {
+      macd_line: number
+      signal_line: number
+      histogram: number
+      signal: "Bullish" | "Bearish" | "Neutral"
+    }
+    ema_crossover: {
+      ema8: number
+      ema21: number
+      signal: "Bullish" | "Bearish" | "Neutral"
+      strength: "Strong" | "Weak"
+    }
   } {
-    // Simulate price history for RSI calculation
     const basePrice = token.current_price
     const volatility = Math.abs(token.price_change_percentage_24h) / 100
-    const priceHistory = Array.from({ length: 30 }, (_, i) => {
+    const priceHistory = Array.from({ length: 50 }, (_, i) => {
       const randomFactor = (Math.random() - 0.5) * volatility * 2
-      return basePrice * (1 + (randomFactor * (30 - i)) / 30)
+      const trendFactor = token.price_change_percentage_7d / 100 / 7 // Daily trend component
+      return basePrice * (1 + (randomFactor * (50 - i)) / 50 + trendFactor * (i / 50))
     })
 
     const rsi = this.calculateRSI(priceHistory)
     const stochasticRSI = this.calculateStochasticRSI(priceHistory)
+
+    const macd = this.calculateMACD(priceHistory)
+    const emaCrossover = this.calculate8_21_EMACrossover(priceHistory)
 
     const levels = this.calculateSupportResistanceLevels(token.current_price, priceHistory)
 
@@ -151,6 +292,8 @@ class AnalysisEngine {
       liquidity_metric: liquidityMetric as "High" | "Medium" | "Low",
       short_term_outlook: shortTermOutlook,
       long_term_outlook: longTermOutlook,
+      macd,
+      ema_crossover: emaCrossover,
     }
   }
 
@@ -291,6 +434,8 @@ class AnalysisEngine {
     const technicalFactors: string[] = []
     let justification = ""
 
+    const extendedIndicators = indicators as any
+
     // RSI-based signals with timeframe adjustments
     if (indicators.rsi < 30) {
       signal = indicators.rsi < 20 ? "Strong Buy" : "Buy"
@@ -300,6 +445,40 @@ class AnalysisEngine {
       signal = indicators.rsi > 80 ? "Strong Sell" : "Sell"
       technicalFactors.push(`Overbought RSI (${indicators.rsi.toFixed(1)})`)
       confidence += timeframe === "1h" || timeframe === "4h" ? 8 : 5
+    }
+
+    // MACD confluence analysis
+    if (extendedIndicators.macd) {
+      const macdSignal = extendedIndicators.macd.signal
+      if (macdSignal === "Bullish") {
+        technicalFactors.push("MACD Bullish Crossover")
+        if (signal === "Hold") signal = "Buy"
+        else if (signal === "Buy") signal = "Strong Buy"
+        confidence += 10
+      } else if (macdSignal === "Bearish") {
+        technicalFactors.push("MACD Bearish Crossover")
+        if (signal === "Hold") signal = "Sell"
+        else if (signal === "Sell") signal = "Strong Sell"
+        confidence += 10
+      }
+    }
+
+    // 8/21 EMA crossover confluence
+    if (extendedIndicators.ema_crossover) {
+      const emaSignal = extendedIndicators.ema_crossover.signal
+      const emaStrength = extendedIndicators.ema_crossover.strength
+
+      if (emaSignal === "Bullish") {
+        technicalFactors.push(`8/21 EMA Bullish (${emaStrength})`)
+        if (signal === "Hold") signal = "Buy"
+        else if (signal === "Buy" && emaStrength === "Strong") signal = "Strong Buy"
+        confidence += emaStrength === "Strong" ? 12 : 6
+      } else if (emaSignal === "Bearish") {
+        technicalFactors.push(`8/21 EMA Bearish (${emaStrength})`)
+        if (signal === "Hold") signal = "Sell"
+        else if (signal === "Sell" && emaStrength === "Strong") signal = "Strong Sell"
+        confidence += emaStrength === "Strong" ? 12 : 6
+      }
     }
 
     // Stochastic RSI for short-term precision
