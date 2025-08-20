@@ -329,10 +329,11 @@ export function FuturisticDashboard() {
   }
 
   const formatPrice = (price: number | undefined) => {
+    console.log("[v0] Formatting price:", price)
     if (price === undefined || price === null || isNaN(price)) return "Loading..."
     if (price < 0.01) return `$${price.toFixed(6)}`
     if (price < 1) return `$${price.toFixed(4)}`
-    return `$${price.toLocaleString()}`
+    return `$${Math.round(price).toLocaleString()}`
   }
 
   return (
@@ -403,13 +404,23 @@ export function FuturisticDashboard() {
 
           <Card className="bg-slate-900/50 border-slate-800 hover:border-orange-500/50 transition-colors">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-slate-400">BTC Price</CardTitle>
+              <CardTitle className="text-sm text-slate-400">
+                BTC Price
+                <span className="text-xs text-slate-500 ml-2">{marketData ? new Date().toLocaleTimeString() : ""}</span>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-2xl font-bold text-white">
-                    {marketData?.btc_price ? formatPrice(marketData.btc_price) : "Loading..."}
+                    {marketData?.btc_price ? (
+                      <>
+                        {formatPrice(marketData.btc_price)}
+                        {console.log("[v0] Displaying BTC price:", marketData.btc_price)}
+                      </>
+                    ) : (
+                      "Loading..."
+                    )}
                   </div>
                   <div
                     className={`text-sm ${marketData?.btc_price_change_24h && marketData.btc_price_change_24h >= 0 ? "text-green-400" : "text-red-400"}`}
