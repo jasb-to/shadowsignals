@@ -605,7 +605,11 @@ export function FuturisticDashboard() {
               {searchResults.slice(0, 10).map((result) => (
                 <button
                   key={result.id}
-                  onClick={() => selectToken(result)}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    selectToken(result)
+                  }}
                   className="w-full px-4 py-3 text-left hover:bg-slate-800 transition-colors border-b border-slate-800 last:border-b-0 flex items-center gap-3"
                 >
                   <div className="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center">
@@ -944,59 +948,28 @@ export function FuturisticDashboard() {
                     <Activity className="h-4 w-4" />
                     Confluence Indicators Used in Analysis
                   </h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                    <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
-                      <div className="text-slate-300 mb-1">RSI (14)</div>
-                      <div className="text-white font-bold">{analysisData.technical_indicators.rsi.toFixed(1)}</div>
+                  <div className="space-y-3">
+                    <div className="text-sm text-white">
+                      <span className="font-medium">Technical Indicators:</span>
+                      <span className="ml-2 text-slate-300">
+                        RSI (14), Stochastic RSI, MACD Signal, 8/21 EMA Cross, Volume Trend, Price Action,
+                        Support/Resistance, Momentum
+                      </span>
                     </div>
-                    <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
-                      <div className="text-slate-300 mb-1">Stochastic RSI</div>
-                      <div className="text-white font-bold">
-                        {analysisData.technical_indicators.stochastic_rsi !== undefined
-                          ? analysisData.technical_indicators.stochastic_rsi.toFixed(1)
-                          : "0.0"}
-                      </div>
+                    <div className="text-sm text-white">
+                      <span className="font-medium">Analysis Timeframes:</span>
+                      <span className="ml-2 text-slate-300">1-4 Hour (Short-term) • 4-24 Hour (Long-term)</span>
                     </div>
-                    <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
-                      <div className="text-slate-300 mb-1">MACD Signal</div>
-                      <div className="text-white font-bold">
-                        {analysisData.technical_indicators.macd_signal || "Neutral"}
-                      </div>
-                    </div>
-                    <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
-                      <div className="text-slate-300 mb-1">8/21 EMA Cross</div>
-                      <div className="text-white font-bold">
-                        {analysisData.technical_indicators.ema_cross_signal || "Neutral"}
-                      </div>
-                    </div>
-                    <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
-                      <div className="text-slate-300 mb-1">Volume Trend</div>
-                      <div className="text-white font-bold">
-                        {analysisData.technical_indicators.volume_trend || "Normal"}
-                      </div>
-                    </div>
-                    <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
-                      <div className="text-slate-300 mb-1">Price Action</div>
-                      <div className="text-white font-bold">
-                        {analysisData.technical_indicators.trend_direction || "Sideways"}
-                      </div>
-                    </div>
-                    <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
-                      <div className="text-slate-300 mb-1">Support/Resistance</div>
-                      <div className="text-white font-bold">
-                        {analysisData.technical_indicators.sr_strength || "Moderate"}
-                      </div>
-                    </div>
-                    <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
-                      <div className="text-slate-300 mb-1">Momentum</div>
-                      <div className="text-white font-bold">
-                        {analysisData.technical_indicators.momentum_score || "50"}/100
-                      </div>
+                    <div className="text-sm text-white">
+                      <span className="font-medium">Confluence Method:</span>
+                      <span className="ml-2 text-slate-300">
+                        AI-weighted indicator alignment with confidence scoring
+                      </span>
                     </div>
                   </div>
                   <div className="mt-3 text-xs text-slate-400">
                     These indicators are combined using AI confluence analysis to generate trading signals with
-                    confidence scores.
+                    confidence scores across multiple timeframes.
                   </div>
                 </div>
 
@@ -1196,6 +1169,21 @@ export function FuturisticDashboard() {
                 </div>
               </CardContent>
             </Card>
+          </div>
+        )}
+
+        {/* Token Analysis Section */}
+        {selectedToken && (
+          <div className="space-y-6">
+            {isAnalyzing && (
+              <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-8 text-center">
+                <div className="flex items-center justify-center gap-3 mb-4">
+                  <RefreshCw className="h-6 w-6 text-cyan-400 animate-spin" />
+                  <span className="text-cyan-400 font-medium">Analyzing {selectedToken.symbol.toUpperCase()}...</span>
+                </div>
+                <p className="text-slate-400 text-sm">Fetching real-time data and running AI confluence analysis</p>
+              </div>
+            )}
           </div>
         )}
 

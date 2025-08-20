@@ -4,6 +4,13 @@ import type { CryptoToken, ApiResponse } from "@/lib/types"
 const COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
 const COINPAPRIKA_BASE_URL = "https://api.coinpaprika.com/v1"
 
+const TOKEN_ID_MAPPING: Record<string, string> = {
+  bitcoin: "btc-bitcoin",
+  ethereum: "eth-ethereum",
+  "virtual-protocol": "virtual-virtual-protocol",
+  // Add more mappings as needed
+}
+
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 8000): Promise<Response> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeout)
@@ -134,8 +141,10 @@ export async function GET(request: NextRequest) {
 
   // Try CoinPaprika as fallback with retry logic
   try {
-    console.log(`[v0] Trying CoinPaprika for: ${tokenId}`)
-    const response = await fetchWithRetry(`${COINPAPRIKA_BASE_URL}/coins/${tokenId}`)
+    const coinPaprikaId = TOKEN_ID_MAPPING[tokenId] || tokenId
+    console.log(`[v0] Trying CoinPaprika for: ${tokenId} (mapped to: ${coinPaprikaId})`)
+
+    const response = await fetchWithRetry(`${COINPAPRIKA_BASE_URL}/coins/${coinPaprikaId}`)
     const text = await response.text()
     const data = safeJsonParse<any>(text)
 
@@ -143,7 +152,7 @@ export async function GET(request: NextRequest) {
       // Get additional market data with retry
       let tickerData = null
       try {
-        const tickerResponse = await fetchWithRetry(`${COINPAPRIKA_BASE_URL}/tickers/${tokenId}`)
+        const tickerResponse = await fetchWithRetry(`${COINPAPRIKA_BASE_URL}/tickers/${coinPaprikaId}`)
         const tickerText = await tickerResponse.text()
         tickerData = safeJsonParse<any>(tickerText)
       } catch (tickerError) {
