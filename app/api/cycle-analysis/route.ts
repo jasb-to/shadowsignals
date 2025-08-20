@@ -37,9 +37,31 @@ export async function GET() {
       globalOk: globalResponse.ok,
     })
 
-    const btcData = await btcResponse.json()
-    const ethData = await ethResponse.json()
-    const globalData = await globalResponse.json()
+    let btcData, ethData, globalData
+
+    try {
+      const btcText = await btcResponse.text()
+      btcData = btcText.startsWith('{') ? JSON.parse(btcText) : {}
+    } catch (e) {
+      console.log("[v0] BTC data parsing failed, using fallback")
+      btcData = {}
+    }
+
+    try {
+      const ethText = await ethResponse.text()
+      ethData = ethText.startsWith('{') ? JSON.parse(ethText) : {}
+    } catch (e) {
+      console.log("[v0] ETH data parsing failed, using fallback")
+      ethData = {}
+    }
+
+    try {
+      const globalText = await globalResponse.text()
+      globalData = globalText.startsWith('{') ? JSON.parse(globalText) : { data: {} }
+    } catch (e) {
+      console.log("[v0] Global data parsing failed, using fallback")
+      globalData = { data: {} }
+    }
 
     const currentBtcPrice = btcData.bitcoin?.usd || 117000
     const currentEthPrice = ethData.ethereum?.usd || 4000
