@@ -150,6 +150,12 @@ export function FuturisticDashboard() {
 
     setIsSearching(true)
     try {
+      await fetch("/api/search-analytics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: query.trim() }),
+      }).catch((err) => console.log("[v0] Search analytics logging failed:", err))
+
       // Search for tokens
       const searchResponse = await fetch(`/api/v1/search?q=${encodeURIComponent(query)}`)
       const searchData = await searchResponse.json()
@@ -180,6 +186,12 @@ export function FuturisticDashboard() {
       console.log("[v0] Token already analyzed or being analyzed, skipping duplicate request:", token.id)
       return
     }
+
+    await fetch("/api/search-analytics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: token.symbol }),
+    }).catch((err) => console.log("[v0] Token selection analytics logging failed:", err))
 
     setShowDropdown(false)
     setSearchQuery(token.symbol.toUpperCase())
