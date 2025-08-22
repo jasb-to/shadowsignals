@@ -118,7 +118,14 @@ export function FuturisticDashboard() {
   const fetchMarketData = async () => {
     try {
       console.log("[v0] Fetching market data from /api/market-overview")
-      const response = await fetch("/api/market-overview")
+      const response = await fetch("/api/market-overview", {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      })
       const data = await response.json()
       console.log("[v0] Market overview API response:", data)
 
@@ -284,14 +291,20 @@ export function FuturisticDashboard() {
   const fetchCycleData = async () => {
     try {
       console.log("[v0] Fetching cycle analysis data")
-      const response = await fetch("/api/cycle-analysis")
+      const response = await fetch("/api/cycle-analysis", {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      })
       const data = await response.json()
       console.log("[v0] Cycle analysis response:", data)
+
       if (data.success) {
         console.log("[v0] Setting cycle data:", data.data)
         setCycleData(data.data)
-      } else {
-        console.log("[v0] Cycle analysis failed:", data.error)
       }
     } catch (error) {
       console.error("[v0] Failed to fetch cycle data:", error)
@@ -299,25 +312,16 @@ export function FuturisticDashboard() {
   }
 
   useEffect(() => {
-    const initialFetchTimer = setTimeout(() => {
+    fetchMarketData()
+    fetchCycleData()
+
+    const intervalTimer = setInterval(() => {
       fetchMarketData()
-    }, 2000)
-
-    setTimeout(() => {
       fetchCycleData()
-    }, 3000)
-
-    const intervalTimer = setTimeout(() => {
-      const interval = setInterval(() => {
-        fetchMarketData()
-        fetchCycleData()
-      }, 60000) // Update every minute
-      return () => clearInterval(interval)
-    }, 5000)
+    }, 30000) // Reduced interval to 30 seconds for more frequent updates
 
     return () => {
-      clearTimeout(initialFetchTimer)
-      clearTimeout(intervalTimer)
+      clearInterval(intervalTimer)
     }
   }, [])
 
