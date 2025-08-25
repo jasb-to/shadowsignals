@@ -40,8 +40,11 @@ export async function GET() {
   try {
     console.log("[v0] Attempting CoinGecko API calls...")
 
-    const [globalResponse, btcResponse, ethResponse] = await Promise.all([
+    const [globalResponse, btcPriceResponse, btcDataResponse, ethResponse] = await Promise.all([
       fetchWithTimeout(`${COINGECKO_BASE_URL}/global`),
+      fetchWithTimeout(
+        `${COINGECKO_BASE_URL}/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true&include_market_cap=true`,
+      ),
       fetchWithTimeout(
         `${COINGECKO_BASE_URL}/coins/bitcoin?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`,
       ),
@@ -53,27 +56,32 @@ export async function GET() {
     console.log("[v0] CoinGecko responses:", {
       globalOk: globalResponse.ok,
       globalStatus: globalResponse.status,
-      btcOk: btcResponse.ok,
-      btcStatus: btcResponse.status,
+      btcPriceOk: btcPriceResponse.ok,
+      btcPriceStatus: btcPriceResponse.status,
+      btcDataOk: btcDataResponse.ok,
+      btcDataStatus: btcDataResponse.status,
       ethOk: ethResponse.ok,
       ethStatus: ethResponse.status,
     })
 
-    if (globalResponse.ok && btcResponse.ok && ethResponse.ok) {
+    if (globalResponse.ok && btcPriceResponse.ok && ethResponse.ok) {
       const globalText = await globalResponse.text()
-      const btcText = await btcResponse.text()
+      const btcPriceText = await btcPriceResponse.text()
+      const btcDataText = await btcDataResponse.text()
       const ethText = await ethResponse.text()
       const globalData = safeJsonParse<any>(globalText)
-      const btcData = safeJsonParse<any>(btcText)
+      const btcPriceData = safeJsonParse<any>(btcPriceText)
+      const btcData = safeJsonParse<any>(btcDataText)
       const ethData = safeJsonParse<any>(ethText)
 
       console.log("[v0] CoinGecko data parsed:", {
         hasGlobalData: !!globalData?.data,
+        hasBtcPriceData: !!btcPriceData?.bitcoin,
         hasBtcData: !!btcData?.market_data,
         hasEthData: !!ethData?.market_data,
       })
 
-      if (globalData?.data && btcData?.market_data && ethData?.market_data) {
+      if (globalData?.data && btcPriceData?.bitcoin && ethData?.market_data) {
         const activeCryptos = globalData.data.active_cryptocurrencies || 0
         const estimatedUsdtPairs = Math.floor(activeCryptos * 0.6)
 
@@ -81,7 +89,7 @@ export async function GET() {
         const activeAnalysisCount = Math.floor(marketCapTrillion * 50)
 
         const totalMarketCap = globalData.data.total_market_cap?.usd || 0
-        const btcMarketCap = btcData.market_data.market_cap?.usd || 0
+        const btcMarketCap = btcPriceData.bitcoin.usd_market_cap || btcData?.market_data?.market_cap?.usd || 0
         const ethMarketCap = ethData.market_data.market_cap?.usd || 0
 
         const accurateBtcDominance = (btcMarketCap / totalMarketCap) * 100
@@ -92,6 +100,15 @@ export async function GET() {
         const expectedTotal3 = 1010000000000
         const calculatedTotal3 = Math.min(totalMarketCap - btcMarketCap - ethMarketCap, expectedTotal3)
 
+        const realTimeBtcPrice = btcPriceData.bitcoin.usd || 0
+        const realTimeBtcChange = btcPriceData.bitcoin.usd_24h_change || 0
+
+        console.log("[v0] Real-time BTC data:", {
+          price: realTimeBtcPrice,
+          change24h: realTimeBtcChange,
+          marketCap: btcMarketCap,
+        })
+
         const overview: MarketOverview = {
           total_market_cap: totalMarketCap,
           total_volume_24h: globalData.data.total_volume?.usd || 0,
@@ -99,18 +116,18 @@ export async function GET() {
           active_cryptocurrencies: activeCryptos,
           usdt_pairs_count: estimatedUsdtPairs,
           active_analysis_count: activeAnalysisCount,
-          btc_price: btcData.market_data.current_price?.usd || 0,
-          btc_price_change_24h: btcData.market_data.price_change_percentage_24h || 0,
+          btc_price: realTimeBtcPrice,
+          btc_price_change_24h: realTimeBtcChange,
           btc_dominance: adjustedBtcDominance,
           usdt_dominance: expectedUsdtDominance,
           total3_market_cap: calculatedTotal3,
           total3_change_24h: globalData.data.market_cap_change_percentage_24h_usd || 0,
         }
 
-        console.log("[v0] CoinGecko success with adjusted dominance values:", {
+        console.log("[v0] CoinGecko success with real-time BTC price:", {
+          btcPrice: realTimeBtcPrice,
+          btcChange: realTimeBtcChange,
           btcDominance: adjustedBtcDominance,
-          usdtDominance: expectedUsdtDominance,
-          total3: calculatedTotal3 / 1000000000000,
         })
 
         const apiResponse: ApiResponse<MarketOverview> = {
