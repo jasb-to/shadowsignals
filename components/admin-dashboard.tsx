@@ -135,34 +135,94 @@ export function AdminDashboard() {
           time: Date.now() - apiCheckStart,
           ok: res.ok,
         })),
-        fetch("/api/analysis?id=ai16z").then(async (res) => {
-          const isOk = res.ok
-          if (!isOk && aiAnalysisRetries < 3) {
-            // Auto-retry failed AI analysis
-            console.log(`[v0] AI Analysis failed, auto-retry ${aiAnalysisRetries + 1}/3`)
-            setAiAnalysisRetries((prev) => prev + 1)
+        (async () => {
+          try {
+            console.log("[v0] Checking AI Analysis API status...")
+            const analysisCheckStart = Date.now()
 
-            // Wait 2 seconds and retry
-            await new Promise((resolve) => setTimeout(resolve, 2000))
-            const retryRes = await fetch("/api/analysis?id=bitcoin") // Try with bitcoin instead
+            // Try multiple token IDs to find one that works
+            const testTokens = ["bitcoin", "ethereum", "ai16z"]
+            let analysisResult = null
 
-            if (retryRes.ok) {
-              setAiAnalysisRetries(0) // Reset retry counter on success
-              setLastAiAnalysisReset(new Date().toISOString())
-              return {
-                name: "AI Analysis",
-                time: Date.now() - apiCheckStart,
-                ok: true,
+            for (const tokenId of testTokens) {
+              try {
+                console.log(`[v0] Testing AI Analysis with token: ${tokenId}`)
+                const response = await fetch(`/api/analysis?id=${tokenId}`, {
+                  method: "GET",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Cache-Control": "no-cache",
+                  },
+                })
+
+                console.log(`[v0] AI Analysis response for ${tokenId}: ${response.status}`)
+
+                if (response.ok) {
+                  const data = await response.json()
+                  console.log(`[v0] AI Analysis successful with ${tokenId}`)
+                  analysisResult = {
+                    name: "AI Analysis",
+                    time: Date.now() - analysisCheckStart,
+                    ok: true,
+                  }
+                  setAiAnalysisRetries(0) // Reset retry counter on success
+                  setLastAiAnalysisReset(new Date().toISOString())
+                  break
+                } else {
+                  console.log(`[v0] AI Analysis failed for ${tokenId}: ${response.status}`)
+                }
+              } catch (error) {
+                console.log(`[v0] AI Analysis error for ${tokenId}:`, error)
               }
             }
-          }
 
-          return {
-            name: "AI Analysis",
-            time: Date.now() - apiCheckStart,
-            ok: isOk,
+            // If all tokens failed, try auto-retry
+            if (!analysisResult && aiAnalysisRetries < 3) {
+              console.log(`[v0] AI Analysis failed, auto-retry ${aiAnalysisRetries + 1}/3`)
+              setAiAnalysisRetries((prev) => prev + 1)
+
+              // Wait 2 seconds and retry with bitcoin
+              await new Promise((resolve) => setTimeout(resolve, 2000))
+              try {
+                const retryResponse = await fetch("/api/analysis?id=bitcoin", {
+                  method: "GET",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Cache-Control": "no-cache",
+                  },
+                })
+
+                if (retryResponse.ok) {
+                  console.log("[v0] AI Analysis retry successful")
+                  setAiAnalysisRetries(0)
+                  setLastAiAnalysisReset(new Date().toISOString())
+                  return {
+                    name: "AI Analysis",
+                    time: Date.now() - analysisCheckStart,
+                    ok: true,
+                  }
+                }
+              } catch (retryError) {
+                console.log("[v0] AI Analysis retry failed:", retryError)
+              }
+            }
+
+            return (
+              analysisResult || {
+                name: "AI Analysis",
+                time: 0,
+                ok: false,
+              }
+            )
+          } catch (error) {
+            console.error("[v0] AI Analysis status check failed:", error)
+            return {
+              name: "AI Analysis",
+              time: 0,
+              ok: false,
+            }
           }
-        }),
+        })(),
       ])
 
       const apiStatuses = apiChecks.map((check, index) => {
