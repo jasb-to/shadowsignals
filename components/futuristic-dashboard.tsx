@@ -189,11 +189,14 @@ export function FuturisticDashboard() {
   }
 
   const selectToken = async (token: any) => {
+    console.log("[v0] selectToken called with token:", token.id, token.symbol)
+
     if (analyzingTokens.has(token.id) || (selectedToken && selectedToken.id === token.id && analysisData)) {
       console.log("[v0] Token already analyzed or being analyzed, skipping duplicate request:", token.id)
       return
     }
 
+    console.log("[v0] Logging token selection analytics for:", token.symbol)
     await fetch("/api/search-analytics", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -209,39 +212,64 @@ export function FuturisticDashboard() {
     setIsAnalyzing(true)
 
     try {
-      console.log("[v0] Calling analysis API for token:", token.id)
-      const response = await fetch(`/api/analysis?id=${token.id}`)
+      console.log("[v0] Starting analysis API call for token:", token.id)
+      console.log("[v0] Analysis API URL:", `/api/analysis?id=${token.id}`)
+
+      const response = await fetch(`/api/analysis?id=${token.id}`, {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      })
+
       console.log("[v0] Analysis API response status:", response.status)
+      console.log("[v0] Analysis API response headers:", Object.fromEntries(response.headers.entries()))
 
       if (response.ok) {
         const result = await response.json()
-        console.log("[v0] Analysis API response data:", JSON.stringify(result).substring(0, 500) + "...")
+        console.log("[v0] Analysis API response data:", JSON.stringify(result).substring(0, 1000) + "...")
 
         if (result.success && result.data) {
-          console.log("[v0] Analysis data keys:", Object.keys(result.data))
-          console.log("[v0] Has short_term_analysis:", !!result.data.short_term_analysis)
-          console.log("[v0] Has long_term_analysis:", !!result.data.long_term_analysis)
+          console.log("[v0] Analysis data structure:", {
+            hasToken: !!result.data.token,
+            hasSignals: !!result.data.signals,
+            hasTechnicalIndicators: !!result.data.technical_indicators,
+            hasShortTerm: !!result.data.short_term_analysis,
+            hasLongTerm: !!result.data.long_term_analysis,
+            signalsCount: result.data.signals?.length || 0,
+          })
 
-          if (result.data.short_term_analysis) {
-            console.log("[v0] Short-term analysis:", result.data.short_term_analysis)
+          if (result.data.technical_indicators) {
+            console.log("[v0] Technical indicators:", {
+              rsi: result.data.technical_indicators.rsi,
+              trend: result.data.technical_indicators.trend_direction,
+              macd: result.data.technical_indicators.macd?.signal,
+            })
           }
-          if (result.data.long_term_analysis) {
-            console.log("[v0] Long-term analysis:", result.data.long_term_analysis)
+
+          if (result.data.token) {
+            console.log("[v0] Token price data:", {
+              currentPrice: result.data.token.current_price,
+              priceChange24h: result.data.token.price_change_percentage_24h,
+            })
           }
 
           setAnalysisData(result.data)
-          console.log("[v0] Setting analysis data with timeframes:", {
-            hasShortTerm: !!result.data.short_term_analysis,
-            hasLongTerm: !!result.data.long_term_analysis,
-          })
+          console.log("[v0] Successfully set analysis data for token:", token.id)
         } else {
-          console.error("[v0] Analysis API returned error:", result.error)
+          console.error("[v0] Analysis API returned error:", result.error || "Unknown error")
+          setAnalysisData(null)
         }
       } else {
-        console.error("[v0] Analysis API request failed:", response.status)
+        const errorText = await response.text()
+        console.error("[v0] Analysis API request failed:", response.status, errorText)
+        setAnalysisData(null)
       }
     } catch (error) {
       console.error("[v0] Analysis API error:", error)
+      setAnalysisData(null)
     } finally {
       setIsAnalyzing(false)
       setAnalyzingTokens((prev) => {
@@ -249,6 +277,7 @@ export function FuturisticDashboard() {
         newSet.delete(token.id)
         return newSet
       })
+      console.log("[v0] Analysis API call completed for token:", token.id)
     }
   }
 
@@ -916,28 +945,71 @@ export function FuturisticDashboard() {
                 </div>
               </CardHeader>
               <CardContent>
+                <div className="mb-4 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-lg font-bold text-white">Current Price</span>
+                    <span className="text-2xl font-bold text-cyan-400">
+                      {formatPrice(analysisData.token.current_price)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-400">24h Change</span>
+                    <span
+                      className={`text-sm font-medium ${
+                        analysisData.token.price_change_percentage_24h >= 0 ? "text-green-400" : "text-red-400"
+                      }`}
+                    >
+                      {analysisData.token.price_change_percentage_24h >= 0 ? "+" : ""}
+                      {analysisData.token.price_change_percentage_24h.toFixed(2)}%
+                    </span>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
                     <div className="text-sm text-slate-400 mb-1">RSI Signal:</div>
-                    <div className="text-white font-medium">
+                    <div
+                      className={`font-medium ${
+                        analysisData.technical_indicators.rsi < 30
+                          ? "text-green-400"
+                          : analysisData.technical_indicators.rsi > 70
+                            ? "text-red-400"
+                            : "text-yellow-400"
+                      }`}
+                    >
                       {analysisData.technical_indicators.rsi < 30
-                        ? "Oversold"
+                        ? "Buy"
                         : analysisData.technical_indicators.rsi > 70
-                          ? "Overbought"
+                          ? "Sell"
                           : "Neutral"}
                     </div>
                   </div>
                   <div>
                     <div className="text-sm text-slate-400 mb-1">Trend:</div>
-                    <div className="text-white font-medium">{analysisData.technical_indicators.trend_direction}</div>
+                    <div
+                      className={`font-medium ${
+                        analysisData.technical_indicators.trend_direction === "Bullish"
+                          ? "text-green-400"
+                          : analysisData.technical_indicators.trend_direction === "Bearish"
+                            ? "text-red-400"
+                            : "text-yellow-400"
+                      }`}
+                    >
+                      {analysisData.technical_indicators.trend_direction}
+                    </div>
                   </div>
                   <div>
-                    <div className="text-sm text-slate-400 mb-1">24h Change:</div>
+                    <div className="text-sm text-slate-400 mb-1">MACD Signal:</div>
                     <div
-                      className={`font-medium ${analysisData.token.price_change_percentage_24h >= 0 ? "text-green-400" : "text-red-400"}`}
+                      className={`font-medium ${
+                        analysisData.technical_indicators.macd?.signal === "Bullish"
+                          ? "text-green-400"
+                          : analysisData.technical_indicators.macd?.signal === "Bearish"
+                            ? "text-red-400"
+                            : "text-yellow-400"
+                      }`}
                     >
-                      {analysisData.token.price_change_percentage_24h >= 0 ? "+" : ""}
-                      {analysisData.token.price_change_percentage_24h.toFixed(2)}%
+                      {analysisData.technical_indicators.macd?.signal || "Neutral"}
                     </div>
                   </div>
                 </div>
