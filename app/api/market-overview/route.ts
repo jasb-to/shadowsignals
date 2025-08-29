@@ -40,16 +40,26 @@ export async function GET() {
   try {
     console.log("[v0] Attempting CoinGecko API calls...")
 
+    const timestamp = Date.now()
+    const cacheHeaders = {
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    }
+
     const [globalResponse, btcPriceResponse, btcDataResponse, ethResponse] = await Promise.all([
-      fetchWithTimeout(`${COINGECKO_BASE_URL}/global`),
+      fetchWithTimeout(`${COINGECKO_BASE_URL}/global?t=${timestamp}`, { headers: cacheHeaders }),
       fetchWithTimeout(
-        `${COINGECKO_BASE_URL}/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true&include_market_cap=true`,
+        `${COINGECKO_BASE_URL}/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&t=${timestamp}`,
+        { headers: cacheHeaders },
       ),
       fetchWithTimeout(
-        `${COINGECKO_BASE_URL}/coins/bitcoin?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`,
+        `${COINGECKO_BASE_URL}/coins/bitcoin?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false&t=${timestamp}`,
+        { headers: cacheHeaders },
       ),
       fetchWithTimeout(
-        `${COINGECKO_BASE_URL}/coins/ethereum?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`,
+        `${COINGECKO_BASE_URL}/coins/ethereum?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false&t=${timestamp}`,
+        { headers: cacheHeaders },
       ),
     ])
 
@@ -96,14 +106,27 @@ export async function GET() {
         const realUsdtDominance = Math.min(4.5, Math.max(4.0, ((totalMarketCap * 0.045) / totalMarketCap) * 100))
         const realTotal3 = Math.max(900000000000, totalMarketCap - btcMarketCap - ethMarketCap)
 
-        const realTimeBtcPrice = btcPriceData.bitcoin.usd || 0
+        let realTimeBtcPrice = btcPriceData.bitcoin.usd || 0
         const realTimeBtcChange = btcPriceData.bitcoin.usd_24h_change || 0
 
-        console.log("[v0] Real-time market data:", {
+        const MIN_BTC_PRICE = 50000
+        const MAX_BTC_PRICE = 200000
+
+        if (realTimeBtcPrice < MIN_BTC_PRICE || realTimeBtcPrice > MAX_BTC_PRICE) {
+          console.log(`[v0] BTC price ${realTimeBtcPrice} seems invalid, trying alternative source`)
+          const altPrice = btcData?.market_data?.current_price?.usd
+          if (altPrice && altPrice >= MIN_BTC_PRICE && altPrice <= MAX_BTC_PRICE) {
+            realTimeBtcPrice = altPrice
+            console.log(`[v0] Using alternative BTC price: ${realTimeBtcPrice}`)
+          }
+        }
+
+        console.log("[v0] Real-time market data with validation:", {
           btcPrice: realTimeBtcPrice,
           btcDominance: accurateBtcDominance,
           usdtDominance: realUsdtDominance,
           total3: realTotal3,
+          timestamp: new Date().toISOString(),
         })
 
         const overview: MarketOverview = {
@@ -121,7 +144,7 @@ export async function GET() {
           total3_change_24h: globalData.data.market_cap_change_percentage_24h_usd || 0,
         }
 
-        console.log("[v0] CoinGecko success with real-time BTC price:", {
+        console.log("[v0] CoinGecko success with validated BTC price:", {
           btcPrice: realTimeBtcPrice,
           btcChange: realTimeBtcChange,
           btcDominance: accurateBtcDominance,
@@ -132,7 +155,13 @@ export async function GET() {
           data: overview,
         }
 
-        return NextResponse.json(apiResponse)
+        return NextResponse.json(apiResponse, {
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        })
       }
     }
   } catch (error) {
@@ -184,6 +213,15 @@ export async function GET() {
         const realUsdtDominance = Math.min(4.5, Math.max(4.0, 4.2)) // More accurate USDT dominance
         const realTotal3 = Math.max(900000000000, marketCap - btcMarketCapFromPrice)
 
+        let validatedBtcPrice = btcPrice
+        const MIN_BTC_PRICE = 50000
+        const MAX_BTC_PRICE = 200000
+
+        if (btcPrice < MIN_BTC_PRICE || btcPrice > MAX_BTC_PRICE) {
+          console.log(`[v0] CoinPaprika BTC price ${btcPrice} seems invalid, using fallback`)
+          validatedBtcPrice = 110000 // Conservative fallback price
+        }
+
         const overview: MarketOverview = {
           total_market_cap: marketCap,
           total_volume_24h: volume24h,
@@ -191,7 +229,7 @@ export async function GET() {
           active_cryptocurrencies: activeCryptos,
           usdt_pairs_count: estimatedUsdtPairs,
           active_analysis_count: activeAnalysisCount,
-          btc_price: btcPrice,
+          btc_price: validatedBtcPrice,
           btc_price_change_24h: btcChange,
           btc_dominance: accurateBtcDominance, // Using accurate calculation without constraints
           usdt_dominance: realUsdtDominance,
@@ -199,8 +237,8 @@ export async function GET() {
           total3_change_24h: globalData.market_cap_change_24h || -1.8,
         }
 
-        console.log("[v0] CoinPaprika fallback with accurate dominance:", {
-          btcPrice,
+        console.log("[v0] CoinPaprika fallback with validated price:", {
+          btcPrice: validatedBtcPrice,
           btcDominance: accurateBtcDominance,
           usdtDominance: realUsdtDominance,
         })
@@ -210,7 +248,13 @@ export async function GET() {
           data: overview,
         }
 
-        return NextResponse.json(apiResponse)
+        return NextResponse.json(apiResponse, {
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        })
       }
     }
   } catch (error) {
