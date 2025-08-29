@@ -777,7 +777,12 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const tokenId = searchParams.get("id")
 
+  console.log("[v0] Analysis API called with token ID:", tokenId)
+  console.log("[v0] Request URL:", request.url)
+  console.log("[v0] Request headers:", Object.fromEntries(request.headers.entries()))
+
   if (!tokenId) {
+    console.log("[v0] Analysis API error: Missing token ID parameter")
     const errorResponse: ApiResponse<AnalysisResult> = {
       success: false,
       error: "Token ID parameter is required",
@@ -786,11 +791,20 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    console.log("[v0] Fetching token data for analysis:", tokenId)
     // First get token data
-    const tokenResponse = await fetch(`${request.nextUrl.origin}/api/tokens?id=${encodeURIComponent(tokenId)}`)
+    const tokenResponse = await fetch(`${request.nextUrl.origin}/api/tokens?id=${encodeURIComponent(tokenId)}`, {
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        Pragma: "no-cache",
+      },
+    })
+
+    console.log("[v0] Token API response status:", tokenResponse.status)
 
     if (tokenResponse.status === 404) {
       const tokenError = await tokenResponse.json()
+      console.log("[v0] Token not found:", tokenError)
       const errorResponse: ApiResponse<AnalysisResult> = {
         success: false,
         error: tokenError.error || "Token data not available right now, please try again shortly.",
@@ -799,12 +813,15 @@ export async function GET(request: NextRequest) {
     }
 
     if (!tokenResponse.ok) {
+      console.log("[v0] Token API failed with status:", tokenResponse.status)
       throw new Error("Failed to fetch token data")
     }
 
     const tokenData = (await tokenResponse.json()) as ApiResponse<CryptoToken>
+    console.log("[v0] Token data received:", tokenData.success ? "Success" : "Failed")
 
     if (!tokenData.success || !tokenData.data) {
+      console.log("[v0] Invalid token data structure")
       const errorResponse: ApiResponse<AnalysisResult> = {
         success: false,
         error: tokenData.error || "Token data not available right now, please try again shortly.",
@@ -812,8 +829,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(errorResponse, { status: 404 })
     }
 
+    console.log("[v0] Starting analysis for token:", tokenData.data.symbol)
     // Generate analysis
     const analysis = await analysisEngine.analyzeToken(tokenData.data)
+    console.log("[v0] Analysis completed successfully")
 
     const apiResponse: ApiResponse<AnalysisResult> = {
       success: true,
@@ -822,7 +841,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(apiResponse)
   } catch (error) {
-    console.error("Analysis generation failed:", error)
+    console.error("[v0] Analysis generation failed:", error)
 
     const errorResponse: ApiResponse<AnalysisResult> = {
       success: false,

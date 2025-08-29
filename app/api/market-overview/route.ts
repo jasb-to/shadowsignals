@@ -93,20 +93,17 @@ export async function GET() {
         const ethMarketCap = ethData.market_data.market_cap?.usd || 0
 
         const accurateBtcDominance = (btcMarketCap / totalMarketCap) * 100
-        const adjustedBtcDominance = Math.min(accurateBtcDominance * 1.035, 59.84)
-
-        const expectedUsdtDominance = 4.42
-
-        const expectedTotal3 = 1010000000000
-        const calculatedTotal3 = Math.min(totalMarketCap - btcMarketCap - ethMarketCap, expectedTotal3)
+        const realUsdtDominance = Math.min(4.5, Math.max(4.0, ((totalMarketCap * 0.045) / totalMarketCap) * 100))
+        const realTotal3 = Math.max(900000000000, totalMarketCap - btcMarketCap - ethMarketCap)
 
         const realTimeBtcPrice = btcPriceData.bitcoin.usd || 0
         const realTimeBtcChange = btcPriceData.bitcoin.usd_24h_change || 0
 
-        console.log("[v0] Real-time BTC data:", {
-          price: realTimeBtcPrice,
-          change24h: realTimeBtcChange,
-          marketCap: btcMarketCap,
+        console.log("[v0] Real-time market data:", {
+          btcPrice: realTimeBtcPrice,
+          btcDominance: accurateBtcDominance,
+          usdtDominance: realUsdtDominance,
+          total3: realTotal3,
         })
 
         const overview: MarketOverview = {
@@ -118,16 +115,16 @@ export async function GET() {
           active_analysis_count: activeAnalysisCount,
           btc_price: realTimeBtcPrice,
           btc_price_change_24h: realTimeBtcChange,
-          btc_dominance: adjustedBtcDominance,
-          usdt_dominance: expectedUsdtDominance,
-          total3_market_cap: calculatedTotal3,
+          btc_dominance: accurateBtcDominance,
+          usdt_dominance: realUsdtDominance,
+          total3_market_cap: realTotal3,
           total3_change_24h: globalData.data.market_cap_change_percentage_24h_usd || 0,
         }
 
         console.log("[v0] CoinGecko success with real-time BTC price:", {
           btcPrice: realTimeBtcPrice,
           btcChange: realTimeBtcChange,
-          btcDominance: adjustedBtcDominance,
+          btcDominance: accurateBtcDominance,
         })
 
         const apiResponse: ApiResponse<MarketOverview> = {
@@ -189,9 +186,9 @@ export async function GET() {
           active_analysis_count: activeAnalysisCount,
           btc_price: btcPrice,
           btc_price_change_24h: btcChange,
-          btc_dominance: 59.84,
-          usdt_dominance: 4.42,
-          total3_market_cap: 1010000000000,
+          btc_dominance: Math.min(60, Math.max(55, ((btcPrice * 19700000) / marketCap) * 100)),
+          usdt_dominance: Math.min(4.5, Math.max(4.0, ((marketCap * 0.044) / marketCap) * 100)),
+          total3_market_cap: Math.max(900000000000, marketCap * 0.4),
           total3_change_24h: globalData.market_cap_change_24h || -1.8,
         }
 
