@@ -430,108 +430,80 @@ class AnalysisEngine {
     timeframe: "1h" | "4h" | "1d" | "7d" | "1m",
   ): TradingSignal {
     let signal: "Strong Buy" | "Buy" | "Hold" | "Sell" | "Strong Sell" = "Hold"
-    let confidence = 85
+    let confidence = 75 // Start with base confidence
     const technicalFactors: string[] = []
     let justification = ""
 
     const extendedIndicators = indicators as any
 
-    // RSI-based signals with timeframe adjustments
-    if (indicators.rsi < 30) {
-      signal = indicators.rsi < 20 ? "Strong Buy" : "Buy"
-      technicalFactors.push(`Oversold RSI (${indicators.rsi.toFixed(1)})`)
-      confidence += timeframe === "1h" || timeframe === "4h" ? 8 : 5
-    } else if (indicators.rsi > 70) {
-      signal = indicators.rsi > 80 ? "Strong Sell" : "Sell"
-      technicalFactors.push(`Overbought RSI (${indicators.rsi.toFixed(1)})`)
-      confidence += timeframe === "1h" || timeframe === "4h" ? 8 : 5
+    if (indicators.rsi < 40) {
+      // Changed from 30 to 40
+      signal = indicators.rsi < 25 ? "Strong Buy" : "Buy" // Changed from 20 to 25
+      technicalFactors.push(`RSI Oversold (${indicators.rsi.toFixed(1)})`)
+      confidence += timeframe === "1h" || timeframe === "4h" ? 12 : 8
+    } else if (indicators.rsi > 60) {
+      // Changed from 70 to 60
+      signal = indicators.rsi > 75 ? "Strong Sell" : "Sell" // Changed from 80 to 75
+      technicalFactors.push(`RSI Overbought (${indicators.rsi.toFixed(1)})`)
+      confidence += timeframe === "1h" || timeframe === "4h" ? 12 : 8
+    } else if (indicators.rsi >= 45 && indicators.rsi <= 55) {
+      // Only neutral in very narrow range
+      technicalFactors.push(`RSI Neutral Zone (${indicators.rsi.toFixed(1)})`)
     }
 
-    // MACD confluence analysis
     if (extendedIndicators.macd) {
       const macdSignal = extendedIndicators.macd.signal
       if (macdSignal === "Bullish") {
-        technicalFactors.push("MACD Bullish Crossover")
+        technicalFactors.push("MACD Bullish Signal")
         if (signal === "Hold") signal = "Buy"
         else if (signal === "Buy") signal = "Strong Buy"
-        confidence += 10
+        confidence += 15 // Increased from 10
       } else if (macdSignal === "Bearish") {
-        technicalFactors.push("MACD Bearish Crossover")
+        technicalFactors.push("MACD Bearish Signal")
         if (signal === "Hold") signal = "Sell"
         else if (signal === "Sell") signal = "Strong Sell"
-        confidence += 10
+        confidence += 15 // Increased from 10
       }
     }
 
-    // 8/21 EMA crossover confluence
     if (extendedIndicators.ema_crossover) {
       const emaSignal = extendedIndicators.ema_crossover.signal
       const emaStrength = extendedIndicators.ema_crossover.strength
 
       if (emaSignal === "Bullish") {
-        technicalFactors.push(`8/21 EMA Bullish (${emaStrength})`)
+        technicalFactors.push(`EMA 8/21 Bullish`)
         if (signal === "Hold") signal = "Buy"
         else if (signal === "Buy" && emaStrength === "Strong") signal = "Strong Buy"
-        confidence += emaStrength === "Strong" ? 12 : 6
+        confidence += emaStrength === "Strong" ? 15 : 10
       } else if (emaSignal === "Bearish") {
-        technicalFactors.push(`8/21 EMA Bearish (${emaStrength})`)
+        technicalFactors.push(`EMA 8/21 Bearish`)
         if (signal === "Hold") signal = "Sell"
         else if (signal === "Sell" && emaStrength === "Strong") signal = "Strong Sell"
-        confidence += emaStrength === "Strong" ? 12 : 6
+        confidence += emaStrength === "Strong" ? 15 : 10
       }
     }
 
-    // Stochastic RSI for short-term precision
-    const stochRSI = (indicators as any).stochastic_rsi
-    if (timeframe === "1h" || timeframe === "4h") {
-      if (stochRSI < 20 && indicators.rsi < 50) {
-        signal = signal === "Hold" ? "Buy" : signal === "Buy" ? "Strong Buy" : signal
-        technicalFactors.push(`Stoch RSI oversold (${stochRSI.toFixed(1)})`)
-        confidence += 5
-      } else if (stochRSI > 80 && indicators.rsi > 50) {
-        signal = signal === "Hold" ? "Sell" : signal === "Sell" ? "Strong Sell" : signal
-        technicalFactors.push(`Stoch RSI overbought (${stochRSI.toFixed(1)})`)
-        confidence += 5
-      }
-    }
-
-    // Price momentum for 10% target identification
-    const priceChange24h = token.price_change_percentage_24h
-    const priceChange7d = token.price_change_percentage_7d
-
-    // Look for setups with momentum that can achieve 10%
-    if (timeframe === "1h" || timeframe === "4h") {
-      if (priceChange24h > 5 && priceChange24h < 25) {
-        // Sweet spot for continuation
-        signal = signal === "Hold" ? "Buy" : signal === "Buy" ? "Strong Buy" : signal
-        technicalFactors.push("Optimal momentum for 10% target")
-        confidence += 7
-      } else if (priceChange24h < -5 && priceChange24h > -25) {
-        signal = signal === "Hold" ? "Sell" : signal === "Sell" ? "Strong Sell" : signal
-        technicalFactors.push("Bearish momentum for 10% decline")
-        confidence += 7
-      }
-    }
-
-    // Volume analysis - crucial for short-term moves
-    if (indicators.volume_indicator === "High") {
-      technicalFactors.push("High volume supports move")
-      confidence += timeframe === "1h" || timeframe === "4h" ? 5 : 2
-    }
-
-    // Support/Resistance proximity for entries
-    const currentPrice = token.current_price
-    const distanceToSupport = ((currentPrice - indicators.support_level) / currentPrice) * 100
-    const distanceToResistance = ((indicators.resistance_level - currentPrice) / currentPrice) * 100
-
-    if (distanceToSupport < 3 && (timeframe === "1h" || timeframe === "4h")) {
-      technicalFactors.push("Near support - bounce potential")
+    if (extendedIndicators.trend_direction === "Bullish") {
+      technicalFactors.push("Bullish Trend")
       if (signal === "Hold") signal = "Buy"
-      confidence += 4
-    } else if (distanceToResistance < 3 && (timeframe === "1h" || timeframe === "4h")) {
-      technicalFactors.push("Near resistance - rejection risk")
+      confidence += 10
+    } else if (extendedIndicators.trend_direction === "Bearish") {
+      technicalFactors.push("Bearish Trend")
       if (signal === "Hold") signal = "Sell"
-      confidence += 4
+      confidence += 10
+    }
+
+    const priceChange24h = token.price_change_percentage_24h
+    if (priceChange24h > 3) {
+      // Changed from 5
+      technicalFactors.push(`Positive Momentum (+${priceChange24h.toFixed(1)}%)`)
+      if (signal === "Hold") signal = "Buy"
+      confidence += 8
+    } else if (priceChange24h < -3) {
+      // Changed from -5
+      technicalFactors.push(`Negative Momentum (${priceChange24h.toFixed(1)}%)`)
+      if (signal === "Hold") signal = "Sell"
+      confidence += 8
     }
 
     // Timeframe-specific justifications
@@ -630,13 +602,13 @@ class AnalysisEngine {
     const trendDirection = indicators.trend_direction
 
     // RSI Analysis
-    if (rsi < 30) {
+    if (rsi < 40) {
       alignedIndicators.push(`RSI Oversold (${rsi.toFixed(1)})`)
-      signal = rsi < 20 ? "Strong Buy" : "Buy"
+      signal = rsi < 25 ? "Strong Buy" : "Buy"
       confidence += 10
-    } else if (rsi > 70) {
+    } else if (rsi > 60) {
       alignedIndicators.push(`RSI Overbought (${rsi.toFixed(1)})`)
-      signal = rsi > 80 ? "Strong Sell" : "Sell"
+      signal = rsi > 75 ? "Strong Sell" : "Sell"
       confidence += 10
     } else if (rsi >= 45 && rsi <= 55) {
       conflictingIndicators.push(`RSI Neutral (${rsi.toFixed(1)})`)

@@ -7,9 +7,19 @@ const COINPAPRIKA_BASE_URL = "https://api.coinpaprika.com/v1"
 const TOKEN_ID_MAPPING: Record<string, string> = {
   bitcoin: "btc-bitcoin",
   ethereum: "eth-ethereum",
+  "eth-ethereum": "eth-ethereum", // Handle both formats
   "virtual-protocol": "virtual-virtual-protocol",
+  binancecoin: "bnb-binance-coin",
+  solana: "sol-solana",
+  cardano: "ada-cardano",
+  "avalanche-2": "avax-avalanche",
+  chainlink: "link-chainlink",
+  polygon: "matic-polygon",
   // Add more mappings as needed
 }
+
+const tokenCache = new Map<string, { data: CryptoToken; timestamp: number }>()
+const CACHE_DURATION = 60000 // 1 minute cache
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 8000): Promise<Response> {
   const controller = new AbortController()
@@ -42,7 +52,7 @@ async function fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
       }
 
       if (response.status === 429 && attempt < maxRetries) {
-        const delay = Math.pow(2, attempt) * 5000 // 5s, 10s, 20s for rate limits
+        const delay = [10000, 30000, 60000][attempt] || 60000
         console.log(`[v0] Rate limited, waiting ${delay}ms before retry ${attempt + 1}`)
         await new Promise((resolve) => setTimeout(resolve, delay))
         continue
@@ -55,8 +65,7 @@ async function fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
         throw error
       }
 
-      // Wait before retry
-      const delay = Math.pow(2, attempt) * 1000 // 1s, 2s, 4s
+      const delay = [2000, 5000, 10000][attempt] || 10000
       console.log(`[v0] Attempt ${attempt + 1} failed, retrying in ${delay}ms`)
       await new Promise((resolve) => setTimeout(resolve, delay))
     }
@@ -73,6 +82,22 @@ function safeJsonParse<T>(text: string): T | null {
   }
 }
 
+function getCoinGeckoId(tokenId: string): string {
+  // Convert CoinPaprika format to CoinGecko format
+  const coinGeckoMappings: Record<string, string> = {
+    "eth-ethereum": "ethereum",
+    "btc-bitcoin": "bitcoin",
+    "bnb-binance-coin": "binancecoin",
+    "sol-solana": "solana",
+    "ada-cardano": "cardano",
+    "avax-avalanche": "avalanche-2",
+    "link-chainlink": "chainlink",
+    "matic-polygon": "matic-network",
+  }
+
+  return coinGeckoMappings[tokenId] || tokenId
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const tokenId = searchParams.get("id")
@@ -85,15 +110,27 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(errorResponse, { status: 400 })
   }
 
+  const cached = tokenCache.get(tokenId)
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    console.log(`[v0] Returning cached data for ${tokenId}`)
+    const apiResponse: ApiResponse<CryptoToken> = {
+      success: true,
+      data: cached.data,
+    }
+    return NextResponse.json(apiResponse)
+  }
+
   console.log(`[v0] Fetching token data for: ${tokenId}`)
+
+  await new Promise((resolve) => setTimeout(resolve, 1000))
 
   let coinGeckoError = ""
   let coinPaprikaError = ""
 
   try {
-    // Try CoinGecko first with retry logic
-    const coinGeckoUrl = `${COINGECKO_BASE_URL}/coins/${tokenId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`
-    console.log(`[v0] CoinGecko URL: ${coinGeckoUrl}`)
+    const coinGeckoId = getCoinGeckoId(tokenId)
+    const coinGeckoUrl = `${COINGECKO_BASE_URL}/coins/${coinGeckoId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`
+    console.log(`[v0] CoinGecko URL: ${coinGeckoUrl} (original: ${tokenId}, normalized: ${coinGeckoId})`)
 
     const response = await fetchWithRetry(coinGeckoUrl)
     const text = await response.text()
@@ -125,6 +162,7 @@ export async function GET(request: NextRequest) {
         image: data.image?.large || `/placeholder.svg?height=64&width=64&query=${data.name}+logo`,
       }
 
+      tokenCache.set(tokenId, { data: token, timestamp: Date.now() })
       console.log(`[v0] Successfully fetched ${tokenId} at $${token.current_price}`)
 
       const apiResponse: ApiResponse<CryptoToken> = {
@@ -139,7 +177,8 @@ export async function GET(request: NextRequest) {
     console.error(`[v0] CoinGecko failed for ${tokenId}:`, coinGeckoError)
   }
 
-  // Try CoinPaprika as fallback with retry logic
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+
   try {
     const coinPaprikaId = TOKEN_ID_MAPPING[tokenId] || tokenId
     console.log(`[v0] Trying CoinPaprika for: ${tokenId} (mapped to: ${coinPaprikaId})`)
@@ -149,9 +188,9 @@ export async function GET(request: NextRequest) {
     const data = safeJsonParse<any>(text)
 
     if (data) {
-      // Get additional market data with retry
       let tickerData = null
       try {
+        await new Promise((resolve) => setTimeout(resolve, 1000))
         const tickerResponse = await fetchWithRetry(`${COINPAPRIKA_BASE_URL}/tickers/${coinPaprikaId}`)
         const tickerText = await tickerResponse.text()
         tickerData = safeJsonParse<any>(tickerText)
@@ -181,6 +220,7 @@ export async function GET(request: NextRequest) {
         image: `/placeholder.svg?height=64&width=64&query=${data.name}+logo`,
       }
 
+      tokenCache.set(tokenId, { data: token, timestamp: Date.now() })
       console.log(`[v0] CoinPaprika success for ${tokenId} at $${token.current_price}`)
 
       const apiResponse: ApiResponse<CryptoToken> = {

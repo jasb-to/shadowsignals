@@ -2,6 +2,7 @@
 
 import type React from "react"
 import { ThemeProvider } from "@/components/theme-provider"
+import { Analytics } from "@vercel/analytics/react"
 
 interface ClientLayoutProps {
   children: React.ReactNode
@@ -14,6 +15,7 @@ export default function ClientLayout({ children, className }: ClientLayoutProps)
       <body className="dark">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
           {children}
+          <Analytics />
         </ThemeProvider>
       </body>
     </html>

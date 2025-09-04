@@ -28,6 +28,8 @@ import {
   XCircle,
   Gauge,
   Zap,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react"
 
 interface MarketOverview {
@@ -51,6 +53,7 @@ interface SearchResult {
   name: string
   market_cap_rank: number
   thumb: string
+  type?: string
 }
 
 interface AnalysisResult {
@@ -81,9 +84,40 @@ interface CycleAnalysis {
     eth_btc_ratio: number
     funding_rates_health: string
   }
+  altseason_progress: number
+  ranging_market?: {
+    status: string
+    range_low: number
+    range_high: number
+    days_in_range: number
+    breakout_probability: number
+  }
 }
 
-export function FuturisticDashboard() {
+interface CryptoScreenerData {
+  success: boolean
+  timestamp: string
+  top_opportunities: Array<{
+    id: string
+    symbol: string
+    name: string
+    price: number
+    price_change_24h: number
+    volume_24h: number
+    market_cap: number
+    rsi: number
+    macd_signal: "bullish" | "bearish" | "neutral"
+    volume_trend: "high" | "normal" | "low"
+    opportunity_score: number
+    signal: "strong_buy" | "buy" | "hold" | "sell" | "strong_sell"
+    confidence: number
+    timeframe: "1D" | "4H" | "1H"
+    trade_duration: "Short-term (1-3 days)" | "Medium-term (3-7 days)" | "Long-term (1-2 weeks)"
+  }>
+  total_analyzed: number
+}
+
+export default function FuturisticDashboard() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedToken, setSelectedToken] = useState<any | null>(null)
   const [isSearching, setIsSearching] = useState(false)
@@ -96,6 +130,8 @@ export function FuturisticDashboard() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analyzingTokens, setAnalyzingTokens] = useState<Set<string>>(new Set())
   const [cycleData, setCycleData] = useState<CycleAnalysis | null>(null)
+  const [screenerData, setScreenerData] = useState<CryptoScreenerData | null>(null)
+  const [screenerExpanded, setScreenerExpanded] = useState(false)
 
   const debounceSearch = useCallback(
     (() => {
@@ -340,17 +376,46 @@ export function FuturisticDashboard() {
     }
   }
 
+  const fetchScreenerData = async () => {
+    try {
+      console.log("[v0] Fetching crypto screener data...")
+      const response = await fetch("/api/crypto-screener", {
+        headers: {
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
+      })
+      const data = await response.json()
+      console.log("[v0] Screener data received:", data)
+      setScreenerData(data)
+    } catch (error) {
+      console.error("[v0] Error fetching screener data:", error)
+    }
+  }
+
   useEffect(() => {
     fetchMarketData()
     fetchCycleData()
+    fetchScreenerData()
 
+    // Regular 30-second refresh for most data
     const intervalTimer = setInterval(() => {
-      fetchMarketData()
       fetchCycleData()
-    }, 30000) // Reduced interval to 30 seconds for more frequent updates
+      fetchScreenerData()
+    }, 30000)
+
+    // Separate 30-minute refresh specifically for market data (BTC price/dominance)
+    const marketDataTimer = setInterval(
+      () => {
+        console.log("[v0] 30-minute market data refresh triggered")
+        fetchMarketData()
+      },
+      30 * 60 * 1000,
+    ) // 30 minutes
 
     return () => {
       clearInterval(intervalTimer)
+      clearInterval(marketDataTimer)
     }
   }, [])
 
@@ -367,6 +432,81 @@ export function FuturisticDashboard() {
     if (price < 0.01) return `$${price.toFixed(6)}`
     if (price < 1) return `$${price.toFixed(4)}`
     return `$${Math.round(price).toLocaleString()}`
+  }
+
+  const getSignalColor = (signal: string) => {
+    switch (signal) {
+      case "strong_buy":
+        return "text-green-400"
+      case "buy":
+        return "text-green-300"
+      case "hold":
+        return "text-yellow-400"
+      case "sell":
+        return "text-red-300"
+      case "strong_sell":
+        return "text-red-400"
+      default:
+        return "text-slate-400"
+    }
+  }
+
+  const getSignalBg = (signal: string) => {
+    switch (signal) {
+      case "strong_buy":
+        return "bg-green-500/20 border-green-500/30"
+      case "buy":
+        return "bg-green-500/10 border-green-500/20"
+      case "hold":
+        return "bg-yellow-500/20 border-yellow-500/30"
+      case "sell":
+        return "bg-red-500/10 border-red-500/20"
+      case "strong_sell":
+        return "bg-red-500/20 border-red-500/30"
+      default:
+        return "bg-slate-500/20 border-slate-500/30"
+    }
+  }
+
+  const searchTokens = async (query: string) => {
+    if (query.length < 2) {
+      setSearchResults([])
+      return
+    }
+
+    setIsSearching(true)
+    try {
+      // Search both crypto and metals
+      const [cryptoResponse, metalsResponse] = await Promise.all([
+        fetch(`/api/search?q=${encodeURIComponent(query)}`),
+        fetch(`/api/metals?q=${encodeURIComponent(query)}`),
+      ])
+
+      const cryptoData = await cryptoResponse.json()
+      const metalsData = await metalsResponse.json()
+
+      let allResults = []
+
+      if (cryptoData.success) {
+        allResults = [...cryptoData.data]
+      }
+
+      if (metalsData.success) {
+        // Add metals with a type indicator
+        const metalResults = metalsData.data.map((metal: any) => ({
+          ...metal,
+          type: "metal",
+        }))
+        allResults = [...allResults, ...metalResults]
+      }
+
+      setSearchResults(allResults)
+    } catch (error) {
+      console.error("[v0] Search failed:", error)
+      setSearchResults([])
+    } finally {
+      setIsSearching(false)
+    }
   }
 
   return (
@@ -393,8 +533,7 @@ export function FuturisticDashboard() {
       </header>
 
       <div className="px-6 py-6 space-y-6">
-        {/* Data Cards - Reorganized Layout */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <Card className="bg-slate-900/50 border-slate-800 hover:border-green-500/50 transition-colors">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-slate-400">Total Market Cap</CardTitle>
@@ -402,11 +541,11 @@ export function FuturisticDashboard() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-2xl font-bold text-white">
+                  <div className="text-lg font-bold text-white">
                     {marketData ? formatNumber(marketData.total_market_cap) : "Loading..."}
                   </div>
                   <div
-                    className={`text-sm ${marketData?.market_cap_change_percentage_24h >= 0 ? "text-green-400" : "text-red-400"}`}
+                    className={`text-xs ${marketData?.market_cap_change_percentage_24h >= 0 ? "text-green-400" : "text-red-400"}`}
                   >
                     {marketData
                       ? `${marketData.market_cap_change_percentage_24h >= 0 ? "+" : ""}${marketData.market_cap_change_percentage_24h.toFixed(2)}% 24h`
@@ -425,10 +564,10 @@ export function FuturisticDashboard() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-2xl font-bold text-white">
+                  <div className="text-lg font-bold text-white">
                     {marketData ? formatNumber(marketData.total_volume_24h) : "Loading..."}
                   </div>
-                  <div className="text-sm text-slate-400">Volume</div>
+                  <div className="text-xs text-slate-400">Volume</div>
                 </div>
                 <BarChart3 className="h-8 w-8 text-blue-400" />
               </div>
@@ -445,7 +584,7 @@ export function FuturisticDashboard() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-2xl font-bold text-white">
+                  <div className="text-lg font-bold text-white">
                     {marketData?.btc_price ? (
                       <>
                         {formatPrice(marketData.btc_price)}
@@ -456,7 +595,7 @@ export function FuturisticDashboard() {
                     )}
                   </div>
                   <div
-                    className={`text-sm ${marketData?.btc_price_change_24h && marketData.btc_price_change_24h >= 0 ? "text-green-400" : "text-red-400"}`}
+                    className={`text-xs ${marketData?.btc_price_change_24h && marketData.btc_price_change_24h >= 0 ? "text-green-400" : "text-red-400"}`}
                   >
                     {marketData?.btc_price_change_24h
                       ? `${marketData.btc_price_change_24h >= 0 ? "+" : ""}${marketData.btc_price_change_24h.toFixed(2)}% 24h`
@@ -468,26 +607,30 @@ export function FuturisticDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="bg-slate-900/50 border-slate-800 hover:border-yellow-500/50 transition-colors">
+          <Card className="bg-slate-900/50 border-slate-800 hover:border-purple-500/50 transition-colors">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-slate-400">BTC Dominance</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-2xl font-bold text-white">
-                    {marketData?.btc_dominance ? `${marketData.btc_dominance.toFixed(1)}%` : "Loading..."}
+                  <div className="text-lg font-bold text-white">
+                    {marketData?.btc_dominance ? (
+                      <>
+                        {`${marketData.btc_dominance.toFixed(1)}%`}
+                        {console.log("[v0] Displaying BTC dominance:", marketData.btc_dominance, "Expected: ~60-61%")}
+                      </>
+                    ) : (
+                      "Loading..."
+                    )}
                   </div>
-                  <div className="text-sm text-slate-400">Market Share</div>
+                  <div className="text-xs text-slate-400">Market Share</div>
                 </div>
                 <PieChart className="h-8 w-8 text-yellow-400" />
               </div>
             </CardContent>
           </Card>
-        </div>
 
-        {/* Second Row - Additional Market Data */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="bg-slate-900/50 border-slate-800 hover:border-teal-500/50 transition-colors">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-slate-400">USDT Dominance</CardTitle>
@@ -495,10 +638,10 @@ export function FuturisticDashboard() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-2xl font-bold text-white">
+                  <div className="text-lg font-bold text-white">
                     {marketData?.usdt_dominance ? `${marketData.usdt_dominance.toFixed(1)}%` : "Loading..."}
                   </div>
-                  <div className="text-sm text-slate-400">Stablecoin Share</div>
+                  <div className="text-xs text-slate-400">Stablecoin Share</div>
                 </div>
                 <Coins className="h-8 w-8 text-teal-400" />
               </div>
@@ -512,11 +655,11 @@ export function FuturisticDashboard() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-2xl font-bold text-white">
+                  <div className="text-lg font-bold text-white">
                     {marketData?.total3_market_cap ? formatNumber(marketData.total3_market_cap) : "Loading..."}
                   </div>
                   <div
-                    className={`text-sm ${marketData?.total3_change_24h && marketData.total3_change_24h >= 0 ? "text-green-400" : "text-red-400"}`}
+                    className={`text-xs ${marketData?.total3_change_24h && marketData.total3_change_24h >= 0 ? "text-green-400" : "text-red-400"}`}
                   >
                     {marketData?.total3_change_24h
                       ? `${marketData.total3_change_24h >= 0 ? "+" : ""}${marketData.total3_change_24h.toFixed(2)}% 24h`
@@ -527,43 +670,98 @@ export function FuturisticDashboard() {
               </div>
             </CardContent>
           </Card>
-
-          <Card className="bg-slate-900/50 border-slate-800 hover:border-purple-500/50 transition-colors">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-slate-400">USDT Pairs</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-2xl font-bold text-white">
-                    {marketData?.usdt_pairs_count ? marketData.usdt_pairs_count.toLocaleString() : "Loading..."}
-                  </div>
-                  <div className="text-sm text-slate-400">Active</div>
-                </div>
-                <TrendingUp className="h-8 w-8 text-purple-400" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-slate-900/50 border-slate-800 hover:border-cyan-500/50 transition-colors">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-slate-400">Active Analysis</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-2xl font-bold text-white">
-                    {marketData?.active_analysis_count
-                      ? marketData.active_analysis_count.toLocaleString()
-                      : "Loading..."}
-                  </div>
-                  <div className="text-sm text-slate-400">Running</div>
-                </div>
-                <Zap className="h-8 w-8 text-cyan-400" />
-              </div>
-            </CardContent>
-          </Card>
         </div>
+
+        <Card className="bg-gradient-to-br from-emerald-900/20 to-teal-900/20 border border-emerald-500/30 hover:border-emerald-400/50 transition-colors">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg text-emerald-400 flex items-center gap-2">
+              <Search className="h-5 w-5" />
+              Crypto Screener - Top 5 Opportunities
+              <button
+                onClick={() => setScreenerExpanded(!screenerExpanded)}
+                className="ml-auto text-emerald-400 hover:text-emerald-300 transition-colors"
+              >
+                {screenerExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+              </button>
+            </CardTitle>
+            <div className="text-xs text-slate-400">
+              Multi-timeframe analysis (1H/4H/1D) using RSI, MACD, and volume indicators
+              {!screenerExpanded && " • Click to expand"}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {screenerData?.top_opportunities ? (
+              <div className="space-y-3">
+                {(screenerExpanded ? screenerData.top_opportunities : screenerData.top_opportunities.slice(0, 1)).map(
+                  (opportunity, index) => (
+                    <div
+                      key={opportunity.id}
+                      className={`flex items-center justify-between p-3 rounded-lg border ${getSignalBg(opportunity.signal)} hover:bg-opacity-30 transition-colors cursor-pointer`}
+                      onClick={() =>
+                        selectToken({ id: opportunity.id, symbol: opportunity.symbol, name: opportunity.name })
+                      }
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="text-lg font-bold text-emerald-400">#{index + 1}</div>
+                        <div>
+                          <div className="font-semibold text-white">{opportunity.symbol}</div>
+                          <div className="text-xs text-slate-400">{opportunity.name}</div>
+                          <div className="text-xs text-emerald-400 font-medium">
+                            {opportunity.timeframe} • {opportunity.trade_duration}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <div className="text-sm font-medium text-white">${opportunity.price.toLocaleString()}</div>
+                        <div
+                          className={`text-xs ${opportunity.price_change_24h >= 0 ? "text-green-400" : "text-red-400"}`}
+                        >
+                          {opportunity.price_change_24h >= 0 ? "+" : ""}
+                          {opportunity.price_change_24h.toFixed(2)}%
+                        </div>
+                      </div>
+
+                      <div className="text-center">
+                        <div className="text-xs text-slate-400">Score</div>
+                        <div className="text-sm font-bold text-emerald-400">{opportunity.opportunity_score}/100</div>
+                      </div>
+
+                      <div className="text-right">
+                        <div className={`text-sm font-bold ${getSignalColor(opportunity.signal)}`}>
+                          {opportunity.signal.replace("_", " ").toUpperCase()}
+                        </div>
+                        <div className="text-xs text-slate-400">{opportunity.confidence}% confidence</div>
+                      </div>
+                    </div>
+                  ),
+                )}
+
+                {!screenerExpanded && screenerData.top_opportunities.length > 1 && (
+                  <div className="text-center py-2 border-t border-emerald-500/20">
+                    <button
+                      onClick={() => setScreenerExpanded(true)}
+                      className="text-emerald-400 hover:text-emerald-300 text-sm font-medium transition-colors"
+                    >
+                      View {screenerData.top_opportunities.length - 1} more opportunities →
+                    </button>
+                  </div>
+                )}
+
+                {screenerExpanded && (
+                  <div className="text-xs text-slate-500 text-center pt-2 border-t border-slate-700">
+                    Analyzed {screenerData.total_analyzed} cryptocurrencies • Updated:{" "}
+                    {new Date(screenerData.timestamp).toLocaleTimeString()}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center py-8">
+                <div className="text-slate-400">Loading screener data...</div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Cycle Analysis Cards - Dedicated Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -605,13 +803,7 @@ export function FuturisticDashboard() {
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-cyan-200">Alt Progress:</span>
-                <span className="text-2xl font-bold text-cyan-300">
-                  {cycleData?.confluence_indicators?.altcoin_season_signal === "alt-season"
-                    ? "75%"
-                    : cycleData?.confluence_indicators?.altcoin_season_signal === "neutral"
-                      ? "25%"
-                      : "10%"}
-                </span>
+                <span className="text-2xl font-bold text-cyan-300">{cycleData?.altseason_progress || 0}%</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-cyan-200">ETH/BTC:</span>
@@ -1245,6 +1437,35 @@ export function FuturisticDashboard() {
             <Card className="bg-slate-900/50 border-slate-800">
               <CardHeader>
                 <CardTitle className="text-white">Multi-Timeframe Analysis</CardTitle>
+                {cycleData?.ranging_market && (
+                  <div className="text-sm text-slate-400 mt-2">
+                    Market Status:{" "}
+                    <span
+                      className={`font-medium ${
+                        cycleData.ranging_market.status === "ranging_up"
+                          ? "text-green-400"
+                          : cycleData.ranging_market.status === "ranging_down"
+                            ? "text-red-400"
+                            : cycleData.ranging_market.status === "ranging_sideways"
+                              ? "text-yellow-400"
+                              : "text-blue-400"
+                      }`}
+                    >
+                      {cycleData.ranging_market.status.replace("_", " ").toUpperCase()}
+                    </span>
+                    {cycleData.ranging_market.status !== "trending" && (
+                      <>
+                        {" • Range: $"}
+                        {cycleData.ranging_market.range_low.toLocaleString()} - $
+                        {cycleData.ranging_market.range_high.toLocaleString()}
+                        {" • Days in range: "}
+                        {cycleData.ranging_market.days_in_range}
+                        {" • Breakout probability: "}
+                        {cycleData.ranging_market.breakout_probability}%
+                      </>
+                    )}
+                  </div>
+                )}
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -1368,3 +1589,5 @@ export function FuturisticDashboard() {
     </div>
   )
 }
+
+export { FuturisticDashboard }

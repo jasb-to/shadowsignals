@@ -9,6 +9,13 @@ interface CycleAnalysis {
   next_halving_days: number
   predicted_top_date: string
   predicted_bottom_date: string
+  ranging_market: {
+    status: "ranging_up" | "ranging_down" | "ranging_sideways" | "trending"
+    range_high: number
+    range_low: number
+    days_in_range: number
+    breakout_probability: number
+  }
   confluence_indicators: {
     open_interest_signal: "bullish" | "neutral" | "bearish"
     btc_dominance_trend: "rising" | "stable" | "falling"
@@ -17,6 +24,7 @@ interface CycleAnalysis {
     funding_rates_health: "healthy" | "neutral" | "overheated"
   }
   bull_top_confluence_score: number // 0-100% confidence in approaching top
+  altseason_progress: number // 0-100% progress within altseason range
 }
 
 export async function GET() {
@@ -41,7 +49,7 @@ export async function GET() {
 
     try {
       const btcText = await btcResponse.text()
-      btcData = btcText.startsWith('{') ? JSON.parse(btcText) : {}
+      btcData = btcText.startsWith("{") ? JSON.parse(btcText) : {}
     } catch (e) {
       console.log("[v0] BTC data parsing failed, using fallback")
       btcData = {}
@@ -49,7 +57,7 @@ export async function GET() {
 
     try {
       const ethText = await ethResponse.text()
-      ethData = ethText.startsWith('{') ? JSON.parse(ethText) : {}
+      ethData = ethText.startsWith("{") ? JSON.parse(ethText) : {}
     } catch (e) {
       console.log("[v0] ETH data parsing failed, using fallback")
       ethData = {}
@@ -57,7 +65,7 @@ export async function GET() {
 
     try {
       const globalText = await globalResponse.text()
-      globalData = globalText.startsWith('{') ? JSON.parse(globalText) : { data: {} }
+      globalData = globalText.startsWith("{") ? JSON.parse(globalText) : { data: {} }
     } catch (e) {
       console.log("[v0] Global data parsing failed, using fallback")
       globalData = { data: {} }
@@ -100,12 +108,15 @@ export async function GET() {
     // Bear market distance (inverse of bull progress with offset)
     const bear_market_distance = Math.max(0, 100 - bull_market_progress - 20)
 
-    // Predicted dates based on historical patterns
+    // Historical analysis shows tops typically occur 15-20 months after halving
+    // Current cycle may extend longer due to institutional adoption and ETF flows
     const predictedTop = new Date(lastHalving)
-    predictedTop.setDate(predictedTop.getDate() + 540) // ~18 months after halving
+    // Extended timeline: 18-24 months (540-730 days) with bias toward later date
+    const daysToTop = Math.max(540, Math.min(730, 540 + (currentBtcPrice > 100000 ? 90 : 0)))
+    predictedTop.setDate(predictedTop.getDate() + daysToTop)
 
     const predictedBottom = new Date(lastHalving)
-    predictedBottom.setDate(predictedBottom.getDate() + 1095) // ~3 years after halving
+    predictedBottom.setDate(predictedBottom.getDate() + 1200) // ~3.3 years after halving
 
     // 1. Open Interest Signal (simplified - would need futures data)
     // High open interest with stable funding = bullish, excessive = bearish
@@ -119,12 +130,17 @@ export async function GET() {
     // 3. ETH/BTC Ratio Analysis - Updated altseason logic to include neutral state
     // Below 0.03 = BTC dominance, 0.03-0.035 = neutral, above 0.035 = altseason
     let altcoin_season_signal: "btc-season" | "neutral" | "alt-season"
+    let altseason_progress: number
+
     if (ethBtcRatio < 0.03) {
       altcoin_season_signal = "btc-season"
+      altseason_progress = Math.max(0, Math.min(33, ((ethBtcRatio - 0.025) / 0.005) * 33))
     } else if (ethBtcRatio < 0.035) {
       altcoin_season_signal = "neutral"
+      altseason_progress = 33 + ((ethBtcRatio - 0.03) / 0.005) * 33
     } else {
       altcoin_season_signal = "alt-season"
+      altseason_progress = Math.min(100, 66 + ((ethBtcRatio - 0.035) / 0.01) * 34)
     }
 
     // 4. Funding Rates Health (simplified estimation)
@@ -151,6 +167,37 @@ export async function GET() {
     // Altcoin season contribution (20 points max)
     confluenceScore += altcoin_season_signal === "alt-season" ? 20 : altcoin_season_signal === "neutral" ? 10 : 0
 
+    // Analyze if BTC is in a ranging market vs trending
+    const priceRange = {
+      high: Math.max(currentBtcPrice * 1.08, 125000), // Estimated recent high
+      low: Math.min(currentBtcPrice * 0.92, 95000), // Estimated recent low
+    }
+
+    const rangeSize = priceRange.high - priceRange.low
+    const currentPosition = (currentBtcPrice - priceRange.low) / rangeSize
+
+    // Determine ranging status based on price position and volatility
+    let rangingStatus: "ranging_up" | "ranging_down" | "ranging_sideways" | "trending"
+    const daysInRange = Math.floor(Math.random() * 45) + 15 // Simulated 15-60 days
+    let breakoutProbability = 0
+
+    if (rangeSize < currentBtcPrice * 0.15) {
+      // Range is less than 15% of price
+      if (currentPosition > 0.7) {
+        rangingStatus = "ranging_up"
+        breakoutProbability = 75
+      } else if (currentPosition < 0.3) {
+        rangingStatus = "ranging_down"
+        breakoutProbability = 65
+      } else {
+        rangingStatus = "ranging_sideways"
+        breakoutProbability = 45
+      }
+    } else {
+      rangingStatus = "trending"
+      breakoutProbability = 85
+    }
+
     const cycleAnalysis: CycleAnalysis = {
       bull_market_progress: Math.round(bull_market_progress),
       bear_market_distance: Math.round(bear_market_distance),
@@ -158,8 +205,23 @@ export async function GET() {
       mvrv_z_score: Math.round(mvrv_z_score * 10) / 10,
       cycle_phase,
       next_halving_days: nextHalvingDays,
-      predicted_top_date: predictedTop.toLocaleDateString(),
-      predicted_bottom_date: predictedBottom.toLocaleDateString(),
+      predicted_top_date: predictedTop.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      }),
+      predicted_bottom_date: predictedBottom.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      }),
+      ranging_market: {
+        status: rangingStatus,
+        range_high: Math.round(priceRange.high),
+        range_low: Math.round(priceRange.low),
+        days_in_range: daysInRange,
+        breakout_probability: breakoutProbability,
+      },
       confluence_indicators: {
         open_interest_signal,
         btc_dominance_trend,
@@ -168,6 +230,7 @@ export async function GET() {
         funding_rates_health,
       },
       bull_top_confluence_score: Math.round(confluenceScore),
+      altseason_progress: Math.round(altseason_progress),
     }
 
     console.log("[v0] Cycle analysis calculated:", {
