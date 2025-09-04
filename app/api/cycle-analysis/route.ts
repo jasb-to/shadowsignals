@@ -10,7 +10,7 @@ interface CycleAnalysis {
   predicted_top_date: string
   predicted_bottom_date: string
   ranging_market: {
-    status: "ranging_up" | "ranging_down" | "ranging_sideways" | "trending"
+    status: "ranging_up" | "ranging_down" | "ranging_sideways" | "trending_up" | "trending_down"
     range_high: number
     range_low: number
     days_in_range: number
@@ -177,7 +177,7 @@ export async function GET() {
     const currentPosition = (currentBtcPrice - priceRange.low) / rangeSize
 
     // Determine ranging status based on price position and volatility
-    let rangingStatus: "ranging_up" | "ranging_down" | "ranging_sideways" | "trending"
+    let rangingStatus: "ranging_up" | "ranging_down" | "ranging_sideways" | "trending_up" | "trending_down"
     const daysInRange = Math.floor(Math.random() * 45) + 15 // Simulated 15-60 days
     let breakoutProbability = 0
 
@@ -194,7 +194,10 @@ export async function GET() {
         breakoutProbability = 45
       }
     } else {
-      rangingStatus = "trending"
+      // Market is trending - determine direction based on 24h change and position in range
+      const btc24hChange = btcData.bitcoin?.usd_24h_change || 0
+      const trendDirection = btc24hChange > 0 && currentPosition > 0.5 ? "trending_up" : "trending_down"
+      rangingStatus = trendDirection
       breakoutProbability = 85
     }
 

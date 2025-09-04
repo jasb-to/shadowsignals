@@ -1448,12 +1448,16 @@ export default function FuturisticDashboard() {
                             ? "text-red-400"
                             : cycleData.ranging_market.status === "ranging_sideways"
                               ? "text-yellow-400"
-                              : "text-blue-400"
+                              : cycleData.ranging_market.status === "trending_up"
+                                ? "text-green-400"
+                                : cycleData.ranging_market.status === "trending_down"
+                                  ? "text-red-400"
+                                  : "text-blue-400"
                       }`}
                     >
                       {cycleData.ranging_market.status.replace("_", " ").toUpperCase()}
                     </span>
-                    {cycleData.ranging_market.status !== "trending" && (
+                    {!cycleData.ranging_market.status.startsWith("trending") && (
                       <>
                         {" • Range: $"}
                         {cycleData.ranging_market.range_low.toLocaleString()} - $
