@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const query = searchParams.get("q")?.toLowerCase() || ""
 
-    console.log("[v0] Free Metals API called with query:", query)
+    console.log("[v0] Metals API called with query:", query)
 
     let metalsData: MetalData[] = []
 
@@ -26,18 +26,24 @@ export async function GET(request: Request) {
 
       const promises = symbols.map(async (symbol) => {
         try {
-          const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`, {
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          const response = await fetch(
+            `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`,
+            {
+              headers: {
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                Accept: "application/json",
+              },
             },
-          })
+          )
 
           if (response.ok) {
             const data = await response.json()
             console.log(`[v0] Successfully fetched ${symbol} data from Yahoo Finance`)
+            console.log(`[v0] ${symbol} raw data:`, JSON.stringify(data.chart?.result?.[0]?.meta, null, 2))
             return { symbol, data }
           } else {
-            console.log(`[v0] Yahoo Finance API failed for ${symbol}:`, response.status)
+            console.log(`[v0] Yahoo Finance API failed for ${symbol}:`, response.status, response.statusText)
           }
         } catch (error) {
           console.log(`[v0] Failed to fetch ${symbol}:`, error)
@@ -57,7 +63,11 @@ export async function GET(request: Request) {
             const meta = chartData.meta
             const currentPrice = meta.regularMarketPrice || meta.previousClose || 0
             const previousClose = meta.previousClose || currentPrice
-            const priceChange = ((currentPrice - previousClose) / previousClose) * 100
+            const priceChange = previousClose > 0 ? ((currentPrice - previousClose) / previousClose) * 100 : 0
+
+            console.log(
+              `[v0] Processing ${result.symbol}: currentPrice=${currentPrice}, previousClose=${previousClose}, change=${priceChange}%`,
+            )
 
             let metalInfo = { id: "", name: "", symbol: "", marketCap: 0, volume: 0 }
 
@@ -74,6 +84,7 @@ export async function GET(request: Request) {
                   marketCap: 1400000000000,
                   volume: 25000000000,
                 }
+                console.log("[v0] Silver (XAG) price from Yahoo Finance:", currentPrice)
                 break
               case "PL=F":
                 metalInfo = {
@@ -95,16 +106,20 @@ export async function GET(request: Request) {
                 break
             }
 
-            metalsData.push({
-              id: metalInfo.id,
-              symbol: metalInfo.symbol,
-              name: metalInfo.name,
-              price: currentPrice,
-              price_change_24h: priceChange,
-              market_cap: metalInfo.marketCap,
-              volume_24h: metalInfo.volume,
-              last_updated: new Date().toISOString(),
-            })
+            if (currentPrice > 0) {
+              metalsData.push({
+                id: metalInfo.id,
+                symbol: metalInfo.symbol,
+                name: metalInfo.name,
+                price: currentPrice,
+                price_change_24h: priceChange,
+                market_cap: metalInfo.marketCap,
+                volume_24h: metalInfo.volume,
+                last_updated: new Date().toISOString(),
+              })
+            } else {
+              console.log(`[v0] Skipping ${result.symbol} due to invalid price: ${currentPrice}`)
+            }
           }
         })
       } else {
@@ -127,7 +142,7 @@ export async function GET(request: Request) {
         last_updated: new Date().toISOString(),
       })
     } catch (apiError) {
-      console.log("[v0] Free metals API failed, using enhanced fallback data")
+      console.log("[v0] Metals API failed, using enhanced fallback data")
 
       const currentTime = new Date()
       const dayOfYear = Math.floor(
@@ -249,26 +264,44 @@ export async function GET(request: Request) {
       ]
     }
 
-    const filteredMetals = metalsData.filter(
-      (metal) =>
-        metal.name.toLowerCase().includes(query) ||
-        metal.symbol.toLowerCase().includes(query) ||
-        metal.id.toLowerCase().includes(query),
-    )
+    const filteredMetals = metalsData.filter((metal) => {
+      const searchTerm = query.toLowerCase()
+
+      if (metal.symbol.toLowerCase().includes(searchTerm)) return true
+      if (metal.id.toLowerCase().includes(searchTerm)) return true
+      if (metal.name.toLowerCase().includes(searchTerm)) return true
+
+      if (searchTerm === "gold" && metal.id === "gold") return true
+      if (searchTerm === "silver" && metal.id === "silver") return true
+      if (searchTerm === "platinum" && metal.id === "platinum") return true
+      if (searchTerm === "palladium" && metal.id === "palladium") return true
+      if (searchTerm === "xau" && metal.symbol === "XAU") return true
+      if (searchTerm === "xag" && metal.symbol === "XAG") return true
+      if (searchTerm === "xpt" && metal.symbol === "XPT") return true
+      if (searchTerm === "xpd" && metal.symbol === "XPD") return true
+
+      return false
+    })
 
     const sortedMetals = filteredMetals.sort((a, b) => {
-      // Prioritize exact matches for precious metals
-      if (query === "gold" && a.id === "gold") return -1
-      if (query === "gold" && b.id === "gold") return 1
-      if (query === "silver" && a.id === "silver") return -1
-      if (query === "silver" && b.id === "silver") return 1
+      const searchTerm = query.toLowerCase()
+
+      if (searchTerm === "gold" && a.id === "gold") return -1
+      if (searchTerm === "gold" && b.id === "gold") return 1
+      if (searchTerm === "silver" && a.id === "silver") return -1
+      if (searchTerm === "silver" && b.id === "silver") return 1
+      if (searchTerm === "xau" && a.symbol === "XAU") return -1
+      if (searchTerm === "xau" && b.symbol === "XAU") return 1
+      if (searchTerm === "xag" && a.symbol === "XAG") return -1
+      if (searchTerm === "xag" && b.symbol === "XAG") return 1
+
       return 0
     })
 
-    console.log("[v0] Free Metals API results:", sortedMetals.length, "metals found for query:", query)
+    console.log("[v0] Metals API results:", sortedMetals.length, "metals found for query:", query)
     console.log(
       "[v0] Metals symbols returned:",
-      sortedMetals.map((m) => `${m.name}(${m.symbol})`),
+      sortedMetals.map((m) => `${m.name}(${m.symbol}) $${m.price}`),
     )
 
     return NextResponse.json({
@@ -276,7 +309,7 @@ export async function GET(request: Request) {
       data: sortedMetals,
     })
   } catch (error) {
-    console.error("[v0] Free Metals API error:", error)
+    console.error("[v0] Metals API error:", error)
     return NextResponse.json(
       {
         success: false,

@@ -475,6 +475,8 @@ export default function FuturisticDashboard() {
     }
 
     setIsSearching(true)
+    console.log("[v0] Starting search for:", query)
+
     try {
       const [cryptoResponse, metalsResponse] = await Promise.all([
         fetch(`/api/v1/search?q=${encodeURIComponent(query)}`),
@@ -487,15 +489,42 @@ export default function FuturisticDashboard() {
       console.log("[v0] Search results - Crypto:", cryptoData.success ? cryptoData.data.length : 0, "results")
       console.log("[v0] Search results - Metals:", metalsData.success ? metalsData.data.length : 0, "results")
 
+      if (metalsData.success && metalsData.data.length > 0) {
+        console.log(
+          "[v0] Metals data received:",
+          metalsData.data.map((m: any) => `${m.name}(${m.symbol}) $${m.price.toFixed(2)}`),
+        )
+      }
+
       let allResults = []
 
-      const isPreciousMetalSearch = ["gold", "silver", "platinum", "palladium"].includes(query.toLowerCase())
+      const isPreciousMetalSearch = [
+        "gold",
+        "silver",
+        "platinum",
+        "palladium",
+        "uranium",
+        "xau",
+        "xag",
+        "xpt",
+        "xpd",
+        "u3o8",
+      ].includes(query.toLowerCase())
 
-      if (metalsData.success && isPreciousMetalSearch) {
-        console.log("[v0] Prioritizing metals for precious metal search:", query)
+      const metalNameMapping: { [key: string]: string } = {
+        gold: "XAU",
+        silver: "XAG",
+        platinum: "XPT",
+        palladium: "XPD",
+        uranium: "U3O8",
+      }
+
+      if (metalsData.success && (isPreciousMetalSearch || metalsData.data.length > 0)) {
+        console.log("[v0] Prioritizing metals for search:", query)
         const metalResults = metalsData.data.map((metal: any) => ({
           ...metal,
           type: "metal",
+          price: typeof metal.price === "number" ? metal.price : Number.parseFloat(metal.price) || 0,
         }))
         allResults = [...metalResults]
 
@@ -503,7 +532,9 @@ export default function FuturisticDashboard() {
         if (cryptoData.success) {
           const filteredCrypto =
             query.toLowerCase() === "gold"
-              ? cryptoData.data.filter((token: any) => !token.id.includes("tether-gold"))
+              ? cryptoData.data.filter(
+                  (token: any) => !token.id.includes("tether-gold") && !token.symbol.includes("XAUT"),
+                )
               : cryptoData.data
           console.log("[v0] Adding", filteredCrypto.length, "crypto results after metals")
           allResults = [...allResults, ...filteredCrypto]
@@ -518,15 +549,16 @@ export default function FuturisticDashboard() {
           const metalResults = metalsData.data.map((metal: any) => ({
             ...metal,
             type: "metal",
+            price: typeof metal.price === "number" ? metal.price : Number.parseFloat(metal.price) || 0,
           }))
           allResults = [...allResults, ...metalResults]
         }
       }
 
       console.log("[v0] Total search results:", allResults.length)
-      setSearchResults(allResults)
+      setSearchResults(allResults.slice(0, 10)) // Limit to 10 results
     } catch (error) {
-      console.error("[v0] Search error:", error)
+      console.error("[v0] Search failed:", error)
       setSearchResults([])
     } finally {
       setIsSearching(false)

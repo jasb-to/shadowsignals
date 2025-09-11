@@ -32,7 +32,7 @@ class EnhancedMultiApiClient {
 
   async searchTokens(query: string): Promise<ApiResponse<SearchResult[]>> {
     try {
-      const response = await this.fetchWithTimeout(`/api/v1/search?query=${encodeURIComponent(query)}`)
+      const response = await this.fetchWithTimeout(`/api/v1/search?q=${encodeURIComponent(query)}`)
 
       if (response.ok) {
         const text = await response.text()
