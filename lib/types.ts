@@ -88,8 +88,9 @@ export interface CycleAnalysis {
     open_interest_signal: "bullish" | "neutral" | "bearish"
     btc_dominance_trend: "rising" | "stable" | "falling"
     eth_btc_ratio: number
-    altcoin_season_signal: "pre-alt" | "alt-season" | "post-alt"
+    altcoin_season_signal: "btc-season" | "neutral" | "alt-season"
     funding_rates_health: "healthy" | "neutral" | "overheated"
   }
   bull_top_confluence_score: number // 0-100% confidence in approaching top
+  altseason_progress: number // 0-100% progress within altseason range
 }

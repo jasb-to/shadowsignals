@@ -430,25 +430,23 @@ class AnalysisEngine {
     timeframe: "1h" | "4h" | "1d" | "7d" | "1m",
   ): TradingSignal {
     let signal: "Strong Buy" | "Buy" | "Hold" | "Sell" | "Strong Sell" = "Hold"
-    let confidence = 75 // Start with base confidence
+    let confidence = 50 // Start with lower base confidence for more realistic scoring
     const technicalFactors: string[] = []
     let justification = ""
 
     const extendedIndicators = indicators as any
 
-    if (indicators.rsi < 40) {
-      // Changed from 30 to 40
-      signal = indicators.rsi < 25 ? "Strong Buy" : "Buy" // Changed from 20 to 25
+    if (indicators.rsi < 35) {
+      signal = indicators.rsi < 25 ? "Strong Buy" : "Buy"
       technicalFactors.push(`RSI Oversold (${indicators.rsi.toFixed(1)})`)
-      confidence += timeframe === "1h" || timeframe === "4h" ? 12 : 8
-    } else if (indicators.rsi > 60) {
-      // Changed from 70 to 60
-      signal = indicators.rsi > 75 ? "Strong Sell" : "Sell" // Changed from 80 to 75
+      confidence += timeframe === "1h" || timeframe === "4h" ? 15 : 12
+    } else if (indicators.rsi > 65) {
+      signal = indicators.rsi > 75 ? "Strong Sell" : "Sell"
       technicalFactors.push(`RSI Overbought (${indicators.rsi.toFixed(1)})`)
-      confidence += timeframe === "1h" || timeframe === "4h" ? 12 : 8
-    } else if (indicators.rsi >= 45 && indicators.rsi <= 55) {
-      // Only neutral in very narrow range
+      confidence += timeframe === "1h" || timeframe === "4h" ? 15 : 12
+    } else if (indicators.rsi >= 40 && indicators.rsi <= 60) {
       technicalFactors.push(`RSI Neutral Zone (${indicators.rsi.toFixed(1)})`)
+      confidence += 5 // Small confidence boost for neutral readings
     }
 
     if (extendedIndicators.macd) {
@@ -457,12 +455,15 @@ class AnalysisEngine {
         technicalFactors.push("MACD Bullish Signal")
         if (signal === "Hold") signal = "Buy"
         else if (signal === "Buy") signal = "Strong Buy"
-        confidence += 15 // Increased from 10
+        confidence += timeframe === "1d" ? 20 : 15 // Higher weight for daily MACD
       } else if (macdSignal === "Bearish") {
         technicalFactors.push("MACD Bearish Signal")
         if (signal === "Hold") signal = "Sell"
         else if (signal === "Sell") signal = "Strong Sell"
-        confidence += 15 // Increased from 10
+        confidence += timeframe === "1d" ? 20 : 15
+      } else {
+        technicalFactors.push("MACD Neutral")
+        confidence += 3
       }
     }
 
@@ -474,63 +475,81 @@ class AnalysisEngine {
         technicalFactors.push(`EMA 8/21 Bullish`)
         if (signal === "Hold") signal = "Buy"
         else if (signal === "Buy" && emaStrength === "Strong") signal = "Strong Buy"
-        confidence += emaStrength === "Strong" ? 15 : 10
+        confidence += emaStrength === "Strong" ? 18 : 12
       } else if (emaSignal === "Bearish") {
         technicalFactors.push(`EMA 8/21 Bearish`)
         if (signal === "Hold") signal = "Sell"
         else if (signal === "Sell" && emaStrength === "Strong") signal = "Strong Sell"
-        confidence += emaStrength === "Strong" ? 15 : 10
+        confidence += emaStrength === "Strong" ? 18 : 12
+      } else {
+        technicalFactors.push("EMA Neutral")
+        confidence += 3
       }
     }
 
     if (extendedIndicators.trend_direction === "Bullish") {
       technicalFactors.push("Bullish Trend")
       if (signal === "Hold") signal = "Buy"
-      confidence += 10
+      else if (signal === "Sell") signal = "Hold" // Trend overrides weak sell signals
+      confidence += 15
     } else if (extendedIndicators.trend_direction === "Bearish") {
       technicalFactors.push("Bearish Trend")
       if (signal === "Hold") signal = "Sell"
-      confidence += 10
+      else if (signal === "Buy") signal = "Hold" // Trend overrides weak buy signals
+      confidence += 15
+    } else {
+      technicalFactors.push("Neutral Trend")
+      confidence += 2
     }
 
     const priceChange24h = token.price_change_percentage_24h
-    if (priceChange24h > 3) {
-      // Changed from 5
-      technicalFactors.push(`Positive Momentum (+${priceChange24h.toFixed(1)}%)`)
+    if (priceChange24h > 5) {
+      technicalFactors.push(`Strong Momentum (+${priceChange24h.toFixed(1)}%)`)
       if (signal === "Hold") signal = "Buy"
-      confidence += 8
-    } else if (priceChange24h < -3) {
-      // Changed from -5
+      confidence += 12
+    } else if (priceChange24h > 2) {
+      technicalFactors.push(`Positive Momentum (+${priceChange24h.toFixed(1)}%)`)
+      confidence += 6
+    } else if (priceChange24h < -5) {
       technicalFactors.push(`Negative Momentum (${priceChange24h.toFixed(1)}%)`)
       if (signal === "Hold") signal = "Sell"
-      confidence += 8
+      confidence += 12
+    } else if (priceChange24h < -2) {
+      technicalFactors.push(`Weak Momentum (${priceChange24h.toFixed(1)}%)`)
+      confidence += 6
     }
 
-    // Timeframe-specific justifications
     switch (timeframe) {
       case "1h":
-        justification = `Scalping setup targeting 10% within 1-2 hours. ${technicalFactors.join(", ")}.`
-        confidence = Math.min(confidence, 88) // Slightly lower for very short-term
+        justification = `1H Scalp: ${signal} signal for quick 3-5% moves. ${technicalFactors.join(", ")}.`
+        confidence = Math.min(confidence * 0.85, 85) // Lower confidence for 1h signals
         break
       case "4h":
-        justification = `Swing trade opportunity for 10% target within 4-12 hours. ${technicalFactors.join(", ")}.`
-        confidence = Math.min(confidence, 92) // Higher confidence for 4h setups
+        justification = `4H Swing: ${signal} setup targeting 8-12% moves. ${technicalFactors.join(", ")}.`
+        confidence = Math.min(confidence * 0.95, 92) // Slightly reduced for 4h
         break
       case "1d":
-        justification = `Daily analysis shows ${signal.toLowerCase()} conditions. ${technicalFactors.join(", ")}.`
+        justification = `Daily Analysis: ${signal} conditions confirmed. ${technicalFactors.join(", ")}.`
+        confidence = Math.min(confidence, 95) // Full confidence for daily
         break
       case "7d":
-        justification = `Weekly trend analysis indicates ${signal.toLowerCase()} potential. ${technicalFactors.join(", ")}.`
+        justification = `Weekly Trend: ${signal} bias established. ${technicalFactors.join(", ")}.`
+        confidence = Math.min(confidence * 0.9, 88) // Reduced for weekly
         break
       case "1m":
-        justification = `Long-term investment perspective suggests ${signal.toLowerCase()} position. ${technicalFactors.join(", ")}.`
-        confidence = Math.min(confidence + 3, 95)
+        justification = `Monthly Outlook: ${signal} for position building. ${technicalFactors.join(", ")}.`
+        confidence = Math.min(confidence * 0.8, 80) // Lower for monthly
         break
+    }
+
+    if (technicalFactors.length < 2) {
+      confidence = Math.min(confidence, 65) // Low confidence for weak signals
+      signal = "Hold" // Default to hold if insufficient factors
     }
 
     return {
       signal,
-      confidence: Math.min(confidence, 95),
+      confidence: Math.max(50, Math.min(confidence, 95)), // Ensure realistic confidence range
       timeframe,
       justification,
       technical_factors: technicalFactors,
@@ -592,7 +611,7 @@ class AnalysisEngine {
     const timeframeLabel = isShortTerm ? "1-4 Hour Analysis" : "4-24 Hour Analysis"
 
     let signal: "Strong Buy" | "Buy" | "Hold" | "Sell" | "Strong Sell" = "Hold"
-    let confidence = 75
+    let confidence = 50 // Start with realistic base confidence
     const alignedIndicators: string[] = []
     const conflictingIndicators: string[] = []
 
@@ -600,18 +619,43 @@ class AnalysisEngine {
     const stochRSI = indicators.stochastic_rsi
     const priceChange24h = token.price_change_percentage_24h
     const trendDirection = indicators.trend_direction
+    const macdSignal = indicators.macd?.signal
+    const emaSignal = indicators.ema_crossover?.signal
 
-    // RSI Analysis
-    if (rsi < 40) {
+    if (rsi < 35) {
       alignedIndicators.push(`RSI Oversold (${rsi.toFixed(1)})`)
       signal = rsi < 25 ? "Strong Buy" : "Buy"
-      confidence += 10
-    } else if (rsi > 60) {
+      confidence += 15
+    } else if (rsi > 65) {
       alignedIndicators.push(`RSI Overbought (${rsi.toFixed(1)})`)
       signal = rsi > 75 ? "Strong Sell" : "Sell"
-      confidence += 10
-    } else if (rsi >= 45 && rsi <= 55) {
+      confidence += 15
+    } else if (rsi >= 40 && rsi <= 60) {
       conflictingIndicators.push(`RSI Neutral (${rsi.toFixed(1)})`)
+    }
+
+    if (macdSignal === "Bullish") {
+      alignedIndicators.push("MACD Bullish Crossover")
+      if (signal === "Hold") signal = "Buy"
+      else if (signal === "Buy") signal = "Strong Buy"
+      confidence += 18
+    } else if (macdSignal === "Bearish") {
+      alignedIndicators.push("MACD Bearish Crossover")
+      if (signal === "Hold") signal = "Sell"
+      else if (signal === "Sell") signal = "Strong Sell"
+      confidence += 18
+    } else {
+      conflictingIndicators.push("MACD Neutral")
+    }
+
+    if (emaSignal === "Bullish") {
+      alignedIndicators.push("EMA 8/21 Bullish")
+      if (signal === "Hold") signal = "Buy"
+      confidence += 12
+    } else if (emaSignal === "Bearish") {
+      alignedIndicators.push("EMA 8/21 Bearish")
+      if (signal === "Hold") signal = "Sell"
+      confidence += 12
     }
 
     // Stochastic RSI for short-term precision
@@ -619,46 +663,46 @@ class AnalysisEngine {
       if (stochRSI < 20) {
         alignedIndicators.push(`Stoch RSI Oversold (${stochRSI.toFixed(1)})`)
         if (signal === "Hold") signal = "Buy"
-        confidence += 8
+        confidence += 10
       } else if (stochRSI > 80) {
         alignedIndicators.push(`Stoch RSI Overbought (${stochRSI.toFixed(1)})`)
         if (signal === "Hold") signal = "Sell"
-        confidence += 8
+        confidence += 10
       }
     }
 
-    // Trend Direction Alignment
     if (trendDirection === "Bullish") {
       alignedIndicators.push("Bullish Trend Direction")
       if (signal === "Hold") signal = "Buy"
-      confidence += isShortTerm ? 6 : 8
+      else if (signal === "Sell") signal = "Hold" // Trend overrides weak sells
+      confidence += isShortTerm ? 10 : 15
     } else if (trendDirection === "Bearish") {
       alignedIndicators.push("Bearish Trend Direction")
       if (signal === "Hold") signal = "Sell"
-      confidence += isShortTerm ? 6 : 8
+      else if (signal === "Buy") signal = "Hold" // Trend overrides weak buys
+      confidence += isShortTerm ? 10 : 15
     } else {
       conflictingIndicators.push("Neutral Trend Direction")
     }
 
-    // Price Momentum Analysis
-    const momentumThreshold = isShortTerm ? 3 : 8
+    const momentumThreshold = isShortTerm ? 4 : 8
     if (priceChange24h > momentumThreshold) {
-      alignedIndicators.push(`Positive Momentum (+${priceChange24h.toFixed(1)}%)`)
+      alignedIndicators.push(`Strong Momentum (+${priceChange24h.toFixed(1)}%)`)
       if (signal === "Hold" || signal === "Buy") signal = signal === "Hold" ? "Buy" : "Strong Buy"
-      confidence += 7
+      confidence += 12
     } else if (priceChange24h < -momentumThreshold) {
       alignedIndicators.push(`Negative Momentum (${priceChange24h.toFixed(1)}%)`)
       if (signal === "Hold" || signal === "Sell") signal = signal === "Hold" ? "Sell" : "Strong Sell"
-      confidence += 7
+      confidence += 12
     }
 
     // Volume Confirmation
     if (indicators.volume_indicator === "High") {
       alignedIndicators.push("High Volume Confirmation")
-      confidence += 5
+      confidence += 8
     } else if (indicators.volume_indicator === "Low") {
       conflictingIndicators.push("Low Volume Warning")
-      confidence -= 3
+      confidence -= 5
     }
 
     // Support/Resistance Levels
@@ -669,10 +713,10 @@ class AnalysisEngine {
     const distanceToSupport = ((currentPrice - support) / currentPrice) * 100
     const distanceToResistance = ((resistance - currentPrice) / currentPrice) * 100
 
-    if (distanceToSupport < 2) {
+    if (distanceToSupport < 3) {
       alignedIndicators.push("Near Support Level")
       if (signal === "Hold") signal = "Buy"
-    } else if (distanceToResistance < 2) {
+    } else if (distanceToResistance < 3) {
       alignedIndicators.push("Near Resistance Level")
       if (signal === "Hold") signal = "Sell"
     }
@@ -680,21 +724,26 @@ class AnalysisEngine {
     // Calculate momentum score (0-100)
     const momentumScore = Math.max(0, Math.min(100, 50 + priceChange24h * 2 + (rsi - 50) + (stochRSI - 50) / 2))
 
-    // Generate justification
     let justification = `${timeframeLabel}: `
-    if (alignedIndicators.length >= 3) {
-      justification += `Strong ${signal.toLowerCase()} signal with ${alignedIndicators.length} aligned indicators. `
+    if (alignedIndicators.length >= 4) {
+      justification += `Strong ${signal.toLowerCase()} signal with ${alignedIndicators.length} aligned indicators. High confidence setup.`
+    } else if (alignedIndicators.length >= 3) {
+      justification += `Moderate ${signal.toLowerCase()} signal with ${alignedIndicators.length} supporting factors. Good setup.`
     } else if (alignedIndicators.length >= 2) {
-      justification += `Moderate ${signal.toLowerCase()} signal with ${alignedIndicators.length} supporting factors. `
+      justification += `Weak ${signal.toLowerCase()} signal with limited indicator support. Proceed with caution.`
+      confidence = Math.min(confidence, 70)
     } else {
-      justification += `Weak signal - insufficient indicator alignment for confident ${signal.toLowerCase()}. `
+      justification += `Insufficient signal alignment. Hold recommended until clearer setup develops.`
       signal = "Hold"
-      confidence = Math.min(confidence, 60)
+      confidence = Math.min(confidence, 55)
     }
 
-    if (conflictingIndicators.length > 0) {
-      justification += `Note: ${conflictingIndicators.length} conflicting indicator(s) present.`
-      confidence -= conflictingIndicators.length * 3
+    if (conflictingIndicators.length > 2) {
+      justification += ` Warning: ${conflictingIndicators.length} conflicting indicators present.`
+      confidence -= conflictingIndicators.length * 4
+      if (conflictingIndicators.length > alignedIndicators.length) {
+        signal = "Hold" // Override signal if more conflicts than alignments
+      }
     }
 
     return {

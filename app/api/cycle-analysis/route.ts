@@ -27,9 +27,69 @@ interface CycleAnalysis {
   altseason_progress: number // 0-100% progress within altseason range
 }
 
+const weeklyParameters = {
+  lastUpdated: new Date("2024-04-20").toISOString(),
+  mvrv_thresholds: {
+    extreme_greed: 7,
+    greed: 4,
+    neutral: 2,
+  },
+  altseason_thresholds: {
+    eth_btc_ratio_high: 0.08,
+    eth_btc_ratio_low: 0.03,
+    btc_dominance_low: 40,
+    btc_dominance_high: 70,
+  },
+  bull_market_curve_adjustment: 1.0, // Multiplier for bull market progress
+}
+
+function getWeeklyParameters() {
+  const lastUpdate = new Date(weeklyParameters.lastUpdated)
+  const now = new Date()
+  const daysSinceUpdate = Math.floor((now.getTime() - lastUpdate.getTime()) / (1000 * 60 * 60 * 24))
+
+  // Auto-update if more than 7 days old
+  if (daysSinceUpdate >= 7) {
+    console.log("[v0] Auto-updating weekly parameters - last update was", daysSinceUpdate, "days ago")
+    // Trigger weekly update (in production, this would be a scheduled job)
+    updateWeeklyParameters()
+  }
+
+  return weeklyParameters
+}
+
+function updateWeeklyParameters() {
+  const now = new Date()
+  const lastHalving = new Date("2024-04-19")
+  const daysSinceHalving = Math.floor((now.getTime() - lastHalving.getTime()) / (1000 * 60 * 60 * 24))
+
+  // Adjust thresholds based on cycle progression
+  if (daysSinceHalving > 500) {
+    // Late cycle - more conservative thresholds
+    weeklyParameters.mvrv_thresholds.extreme_greed = 6
+    weeklyParameters.mvrv_thresholds.greed = 3.5
+    weeklyParameters.bull_market_curve_adjustment = 0.95
+  } else if (daysSinceHalving > 300) {
+    // Mid cycle - standard thresholds
+    weeklyParameters.mvrv_thresholds.extreme_greed = 7
+    weeklyParameters.mvrv_thresholds.greed = 4
+    weeklyParameters.bull_market_curve_adjustment = 1.0
+  } else {
+    // Early cycle - more aggressive thresholds
+    weeklyParameters.mvrv_thresholds.extreme_greed = 8
+    weeklyParameters.mvrv_thresholds.greed = 5
+    weeklyParameters.bull_market_curve_adjustment = 1.05
+  }
+
+  weeklyParameters.lastUpdated = now.toISOString()
+  console.log("[v0] Weekly parameters updated:", weeklyParameters)
+}
+
 export async function GET() {
   try {
     console.log("[v0] Cycle analysis API called")
+
+    const params = getWeeklyParameters()
 
     const [btcResponse, ethResponse, globalResponse] = await Promise.all([
       fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true"),
@@ -90,9 +150,17 @@ export async function GET() {
     // Assuming we're in early-mid bull phase based on current timing
     const piCycleSignal = daysSinceHalving < 200 ? "neutral" : daysSinceHalving < 500 ? "bullish" : "bearish"
 
-    // MVRV Z-Score estimation (simplified - would need on-chain data)
-    // Higher scores indicate overvaluation, typically 3-7 range for tops
-    const mvrv_z_score = Math.min(6, Math.max(0, ((currentBtcPrice - 50000) / 20000) * 3))
+    const mvrv_z_score = Math.min(
+      10,
+      Math.max(
+        0,
+        currentBtcPrice < 75000
+          ? ((currentBtcPrice - 50000) / 25000) * 2
+          : currentBtcPrice < 125000
+            ? 2 + ((currentBtcPrice - 75000) / 50000) * 3
+            : 5 + ((currentBtcPrice - 125000) / 75000) * 5,
+      ),
+    )
 
     // Cycle phase based on days since halving
     let cycle_phase: "accumulation" | "markup" | "distribution" | "markdown"
@@ -101,12 +169,18 @@ export async function GET() {
     else if (daysSinceHalving < 700) cycle_phase = "distribution"
     else cycle_phase = "markdown"
 
-    // Bull market progress (0-100%)
-    // Peak typically occurs 12-18 months after halving
-    const bull_market_progress = Math.min(100, Math.max(0, ((daysSinceHalving - 180) / 360) * 100))
+    const bull_market_progress = Math.min(
+      100,
+      Math.max(
+        0,
+        (daysSinceHalving < 540
+          ? (daysSinceHalving / 540) * 85 // Max 85% until 18 months
+          : 85 + ((daysSinceHalving - 540) / 180) * 15) * params.bull_market_curve_adjustment, // Apply weekly adjustment
+      ),
+    )
 
     // Bear market distance (inverse of bull progress with offset)
-    const bear_market_distance = Math.max(0, 100 - bull_market_progress - 20)
+    const bear_market_distance = Math.max(0, 100 - bull_market_progress - 10)
 
     // Historical analysis shows tops typically occur 15-20 months after halving
     // Current cycle may extend longer due to institutional adoption and ETF flows
@@ -127,45 +201,54 @@ export async function GET() {
     // Rising dominance early bull, falling dominance = alt season approaching
     const btc_dominance_trend = btcDominance > 55 ? "rising" : btcDominance > 45 ? "stable" : "falling"
 
-    // 3. ETH/BTC Ratio Analysis - Updated altseason logic to include neutral state
-    // Below 0.03 = BTC dominance, 0.03-0.035 = neutral, above 0.035 = altseason
     let altcoin_season_signal: "btc-season" | "neutral" | "alt-season"
     let altseason_progress: number
 
-    if (ethBtcRatio < 0.03) {
+    if (ethBtcRatio < params.altseason_thresholds.eth_btc_ratio_low) {
       altcoin_season_signal = "btc-season"
-      altseason_progress = Math.max(0, Math.min(33, ((ethBtcRatio - 0.025) / 0.005) * 33))
-    } else if (ethBtcRatio < 0.035) {
+      altseason_progress = Math.max(0, Math.min(25, ((ethBtcRatio - 0.025) / 0.007) * 25))
+    } else if (ethBtcRatio < 0.045) {
       altcoin_season_signal = "neutral"
-      altseason_progress = 33 + ((ethBtcRatio - 0.03) / 0.005) * 33
+      altseason_progress = 25 + ((ethBtcRatio - params.altseason_thresholds.eth_btc_ratio_low) / 0.013) * 35
     } else {
       altcoin_season_signal = "alt-season"
-      altseason_progress = Math.min(100, 66 + ((ethBtcRatio - 0.035) / 0.01) * 34)
+      altseason_progress = Math.min(100, 60 + ((ethBtcRatio - 0.045) / 0.035) * 40)
     }
 
-    // 4. Funding Rates Health (simplified estimation)
+    // Funding Rates Health (simplified estimation)
     // Positive but not excessive funding rates indicate healthy bull market
     const fundingEstimate = Math.min(2, Math.max(-1, (currentBtcPrice - 100000) / 50000))
     const funding_rates_health = fundingEstimate < 0.5 ? "healthy" : fundingEstimate < 1.2 ? "neutral" : "overheated"
 
-    // 5. Bull Top Confluence Score - Updated confluence calculation for new altseason states
-    // Combines all 5 indicators to assess proximity to bull market top
     let confluenceScore = 0
+    const confluenceBreakdown: any = {}
 
-    // Pi Cycle contribution (20 points max)
-    confluenceScore += piCycleSignal === "bearish" ? 20 : piCycleSignal === "neutral" ? 10 : 0
+    // Pi Cycle contribution (25 points max) - increased weight
+    const piCyclePoints = piCycleSignal === "bearish" ? 25 : piCycleSignal === "neutral" ? 12 : 0
+    confluenceScore += piCyclePoints
+    confluenceBreakdown.piCycle = { signal: piCycleSignal, points: piCyclePoints }
 
-    // MVRV contribution (20 points max)
-    confluenceScore += Math.min(20, Math.max(0, (mvrv_z_score - 2) * 5))
+    const mvrvPoints = Math.min(
+      25,
+      Math.max(0, mvrv_z_score > params.mvrv_thresholds.greed ? (mvrv_z_score - params.mvrv_thresholds.greed) * 8 : 0),
+    )
+    confluenceScore += mvrvPoints
+    confluenceBreakdown.mvrv = { score: mvrv_z_score, points: mvrvPoints }
 
     // Open Interest contribution (20 points max)
-    confluenceScore += open_interest_signal === "bearish" ? 20 : open_interest_signal === "neutral" ? 10 : 0
+    const oiPoints = open_interest_signal === "bearish" ? 20 : open_interest_signal === "neutral" ? 8 : 0
+    confluenceScore += oiPoints
+    confluenceBreakdown.openInterest = { signal: open_interest_signal, points: oiPoints }
 
-    // Dominance trend contribution (20 points max)
-    confluenceScore += btc_dominance_trend === "falling" ? 20 : btc_dominance_trend === "stable" ? 10 : 0
+    // Dominance trend contribution (15 points max) - reduced weight
+    const domPoints = btc_dominance_trend === "falling" ? 15 : btc_dominance_trend === "stable" ? 6 : 0
+    confluenceScore += domPoints
+    confluenceBreakdown.dominance = { trend: btc_dominance_trend, points: domPoints }
 
-    // Altcoin season contribution (20 points max)
-    confluenceScore += altcoin_season_signal === "alt-season" ? 20 : altcoin_season_signal === "neutral" ? 10 : 0
+    // Altcoin season contribution (15 points max) - reduced weight
+    const altPoints = altcoin_season_signal === "alt-season" ? 15 : altcoin_season_signal === "neutral" ? 6 : 0
+    confluenceScore += altPoints
+    confluenceBreakdown.altseason = { signal: altcoin_season_signal, points: altPoints }
 
     // Analyze if BTC is in a ranging market vs trending
     const priceRange = {
@@ -236,9 +319,14 @@ export async function GET() {
       altseason_progress: Math.round(altseason_progress),
     }
 
-    console.log("[v0] Cycle analysis calculated:", {
+    console.log("[v0] Enhanced cycle analysis calculated:", {
+      daysSinceHalving,
+      bull_market_progress: Math.round(bull_market_progress),
+      mvrv_z_score: Math.round(mvrv_z_score * 10) / 10,
       altcoin_season_signal,
-      bull_top_confluence_score: confluenceScore,
+      altseason_progress: Math.round(altseason_progress),
+      bull_top_confluence_score: Math.round(confluenceScore),
+      confluenceBreakdown,
       predicted_top_date: predictedTop.toLocaleDateString(),
     })
 

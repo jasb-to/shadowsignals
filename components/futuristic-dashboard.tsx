@@ -476,33 +476,57 @@ export default function FuturisticDashboard() {
 
     setIsSearching(true)
     try {
-      // Search both crypto and metals
       const [cryptoResponse, metalsResponse] = await Promise.all([
-        fetch(`/api/search?q=${encodeURIComponent(query)}`),
+        fetch(`/api/v1/search?q=${encodeURIComponent(query)}`),
         fetch(`/api/metals?q=${encodeURIComponent(query)}`),
       ])
 
       const cryptoData = await cryptoResponse.json()
       const metalsData = await metalsResponse.json()
 
+      console.log("[v0] Search results - Crypto:", cryptoData.success ? cryptoData.data.length : 0, "results")
+      console.log("[v0] Search results - Metals:", metalsData.success ? metalsData.data.length : 0, "results")
+
       let allResults = []
 
-      if (cryptoData.success) {
-        allResults = [...cryptoData.data]
-      }
+      const isPreciousMetalSearch = ["gold", "silver", "platinum", "palladium"].includes(query.toLowerCase())
 
-      if (metalsData.success) {
-        // Add metals with a type indicator
+      if (metalsData.success && isPreciousMetalSearch) {
+        console.log("[v0] Prioritizing metals for precious metal search:", query)
         const metalResults = metalsData.data.map((metal: any) => ({
           ...metal,
           type: "metal",
         }))
-        allResults = [...allResults, ...metalResults]
+        allResults = [...metalResults]
+
+        // Then add crypto results (excluding Tether Gold for gold searches)
+        if (cryptoData.success) {
+          const filteredCrypto =
+            query.toLowerCase() === "gold"
+              ? cryptoData.data.filter((token: any) => !token.id.includes("tether-gold"))
+              : cryptoData.data
+          console.log("[v0] Adding", filteredCrypto.length, "crypto results after metals")
+          allResults = [...allResults, ...filteredCrypto]
+        }
+      } else {
+        // Normal search: crypto first, then metals
+        if (cryptoData.success) {
+          allResults = [...cryptoData.data]
+        }
+
+        if (metalsData.success) {
+          const metalResults = metalsData.data.map((metal: any) => ({
+            ...metal,
+            type: "metal",
+          }))
+          allResults = [...allResults, ...metalResults]
+        }
       }
 
+      console.log("[v0] Total search results:", allResults.length)
       setSearchResults(allResults)
     } catch (error) {
-      console.error("[v0] Search failed:", error)
+      console.error("[v0] Search error:", error)
       setSearchResults([])
     } finally {
       setIsSearching(false)
@@ -731,7 +755,7 @@ export default function FuturisticDashboard() {
                         <div className={`text-sm font-bold ${getSignalColor(opportunity.signal)}`}>
                           {opportunity.signal.replace("_", " ").toUpperCase()}
                         </div>
-                        <div className="text-xs text-slate-400">{opportunity.confidence}% confidence</div>
+                        <div className="text-xs text-slate-400">{Math.round(opportunity.confidence)}% confidence</div>
                       </div>
                     </div>
                   ),
@@ -900,7 +924,7 @@ export default function FuturisticDashboard() {
                     {analysisData.signals.length > 0 && (
                       <>
                         <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                          {analysisData.signals[0].confidence}% confidence
+                          {Math.round(analysisData.signals[0].confidence)}% confidence
                         </Badge>
                         <Badge
                           className={`${
@@ -947,7 +971,7 @@ export default function FuturisticDashboard() {
                             {analysisData.short_term_analysis.signal}
                           </Badge>
                           <Badge className="bg-cyan-500/20 text-cyan-400 border-cyan-500/30">
-                            {analysisData.short_term_analysis.confidence}%
+                            {Math.round(analysisData.short_term_analysis.confidence)}%
                           </Badge>
                         </div>
                       </div>
@@ -1049,7 +1073,7 @@ export default function FuturisticDashboard() {
                             {analysisData.long_term_analysis.signal}
                           </Badge>
                           <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
-                            {analysisData.long_term_analysis.confidence}%
+                            {Math.round(analysisData.long_term_analysis.confidence)}%
                           </Badge>
                         </div>
                       </div>
@@ -1162,17 +1186,17 @@ export default function FuturisticDashboard() {
                     <div className="text-sm text-slate-400 mb-1">RSI Signal:</div>
                     <div
                       className={`font-medium ${
-                        analysisData.technical_indicators.rsi < 30
+                        analysisData.technical_indicators.rsi < 35
                           ? "text-green-400"
-                          : analysisData.technical_indicators.rsi > 70
+                          : analysisData.technical_indicators.rsi > 65
                             ? "text-red-400"
                             : "text-yellow-400"
                       }`}
                     >
-                      {analysisData.technical_indicators.rsi < 30
-                        ? "Buy"
-                        : analysisData.technical_indicators.rsi > 70
-                          ? "Sell"
+                      {analysisData.technical_indicators.rsi < 35
+                        ? "Oversold"
+                        : analysisData.technical_indicators.rsi > 65
+                          ? "Overbought"
                           : "Neutral"}
                     </div>
                   </div>
@@ -1180,14 +1204,28 @@ export default function FuturisticDashboard() {
                     <div className="text-sm text-slate-400 mb-1">Trend:</div>
                     <div
                       className={`font-medium ${
-                        analysisData.technical_indicators.trend_direction === "Bullish"
+                        cycleData?.ranging_market?.status === "trending_up"
                           ? "text-green-400"
-                          : analysisData.technical_indicators.trend_direction === "Bearish"
+                          : cycleData?.ranging_market?.status === "trending_down"
                             ? "text-red-400"
-                            : "text-yellow-400"
+                            : cycleData?.ranging_market?.status === "ranging_up"
+                              ? "text-green-400"
+                              : cycleData?.ranging_market?.status === "ranging_down"
+                                ? "text-red-400"
+                                : "text-yellow-400"
                       }`}
                     >
-                      {analysisData.technical_indicators.trend_direction}
+                      {cycleData?.ranging_market?.status === "trending_up"
+                        ? "Trending Up"
+                        : cycleData?.ranging_market?.status === "trending_down"
+                          ? "Trending Down"
+                          : cycleData?.ranging_market?.status === "ranging_up"
+                            ? "Ranging Up"
+                            : cycleData?.ranging_market?.status === "ranging_down"
+                              ? "Ranging Down"
+                              : cycleData?.ranging_market?.status === "ranging_sideways"
+                                ? "Sideways"
+                                : analysisData.technical_indicators.trend_direction || "Neutral"}
                     </div>
                   </div>
                   <div>
@@ -1437,39 +1475,6 @@ export default function FuturisticDashboard() {
             <Card className="bg-slate-900/50 border-slate-800">
               <CardHeader>
                 <CardTitle className="text-white">Multi-Timeframe Analysis</CardTitle>
-                {cycleData?.ranging_market && (
-                  <div className="text-sm text-slate-400 mt-2">
-                    Market Status:{" "}
-                    <span
-                      className={`font-medium ${
-                        cycleData.ranging_market.status === "ranging_up"
-                          ? "text-green-400"
-                          : cycleData.ranging_market.status === "ranging_down"
-                            ? "text-red-400"
-                            : cycleData.ranging_market.status === "ranging_sideways"
-                              ? "text-yellow-400"
-                              : cycleData.ranging_market.status === "trending_up"
-                                ? "text-green-400"
-                                : cycleData.ranging_market.status === "trending_down"
-                                  ? "text-red-400"
-                                  : "text-blue-400"
-                      }`}
-                    >
-                      {cycleData.ranging_market.status.replace("_", " ").toUpperCase()}
-                    </span>
-                    {!cycleData.ranging_market.status.startsWith("trending") && (
-                      <>
-                        {" • Range: $"}
-                        {cycleData.ranging_market.range_low.toLocaleString()} - $
-                        {cycleData.ranging_market.range_high.toLocaleString()}
-                        {" • Days in range: "}
-                        {cycleData.ranging_market.days_in_range}
-                        {" • Breakout probability: "}
-                        {cycleData.ranging_market.breakout_probability}%
-                      </>
-                    )}
-                  </div>
-                )}
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -1487,7 +1492,7 @@ export default function FuturisticDashboard() {
                       >
                         {signal.signal}
                       </Badge>
-                      <div className="text-xs text-slate-500 mt-1">{signal.confidence}%</div>
+                      <div className="text-xs text-slate-500 mt-1">{Math.round(signal.confidence)}%</div>
                     </div>
                   ))}
                 </div>
