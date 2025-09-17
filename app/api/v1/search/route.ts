@@ -12,6 +12,122 @@ const TOKEN_DATABASE: SearchResult[] = [
   { id: "binancecoin", symbol: "bnb", name: "BNB", market_cap_rank: 4, thumb: "/placeholder.svg?height=32&width=32" },
   { id: "solana", symbol: "sol", name: "Solana", market_cap_rank: 5, thumb: "/placeholder.svg?height=32&width=32" },
 
+  {
+    id: "the-graph",
+    symbol: "grt",
+    name: "The Graph",
+    market_cap_rank: 60,
+    thumb: "/placeholder.svg?height=32&width=32",
+  },
+  { id: "cardano", symbol: "ada", name: "Cardano", market_cap_rank: 10, thumb: "/placeholder.svg?height=32&width=32" },
+  { id: "ripple", symbol: "xrp", name: "XRP", market_cap_rank: 6, thumb: "/placeholder.svg?height=32&width=32" },
+  {
+    id: "avalanche-2",
+    symbol: "avax",
+    name: "Avalanche",
+    market_cap_rank: 12,
+    thumb: "/placeholder.svg?height=32&width=32",
+  },
+  {
+    id: "polygon",
+    symbol: "matic",
+    name: "Polygon",
+    market_cap_rank: 16,
+    thumb: "/placeholder.svg?height=32&width=32",
+  },
+  {
+    id: "polkadot",
+    symbol: "dot",
+    name: "Polkadot",
+    market_cap_rank: 14,
+    thumb: "/placeholder.svg?height=32&width=32",
+  },
+  {
+    id: "litecoin",
+    symbol: "ltc",
+    name: "Litecoin",
+    market_cap_rank: 24,
+    thumb: "/placeholder.svg?height=32&width=32",
+  },
+  {
+    id: "internet-computer",
+    symbol: "icp",
+    name: "Internet Computer",
+    market_cap_rank: 26,
+    thumb: "/placeholder.svg?height=32&width=32",
+  },
+  {
+    id: "ethereum-classic",
+    symbol: "etc",
+    name: "Ethereum Classic",
+    market_cap_rank: 34,
+    thumb: "/placeholder.svg?height=32&width=32",
+  },
+  { id: "stellar", symbol: "xlm", name: "Stellar", market_cap_rank: 36, thumb: "/placeholder.svg?height=32&width=32" },
+  {
+    id: "filecoin",
+    symbol: "fil",
+    name: "Filecoin",
+    market_cap_rank: 44,
+    thumb: "/placeholder.svg?height=32&width=32",
+  },
+  { id: "vechain", symbol: "vet", name: "VeChain", market_cap_rank: 46, thumb: "/placeholder.svg?height=32&width=32" },
+  {
+    id: "hedera-hashgraph",
+    symbol: "hbar",
+    name: "Hedera",
+    market_cap_rank: 50,
+    thumb: "/placeholder.svg?height=32&width=32",
+  },
+  {
+    id: "algorand",
+    symbol: "algo",
+    name: "Algorand",
+    market_cap_rank: 54,
+    thumb: "/placeholder.svg?height=32&width=32",
+  },
+  {
+    id: "elrond-erd-2",
+    symbol: "egld",
+    name: "MultiversX",
+    market_cap_rank: 56,
+    thumb: "/placeholder.svg?height=32&width=32",
+  },
+  { id: "flow", symbol: "flow", name: "Flow", market_cap_rank: 64, thumb: "/placeholder.svg?height=32&width=32" },
+  { id: "tezos", symbol: "xtz", name: "Tezos", market_cap_rank: 66, thumb: "/placeholder.svg?height=32&width=32" },
+  { id: "eos", symbol: "eos", name: "EOS", market_cap_rank: 70, thumb: "/placeholder.svg?height=32&width=32" },
+  { id: "iota", symbol: "miota", name: "IOTA", market_cap_rank: 72, thumb: "/placeholder.svg?height=32&width=32" },
+  { id: "neo", symbol: "neo", name: "Neo", market_cap_rank: 74, thumb: "/placeholder.svg?height=32&width=32" },
+  {
+    id: "klay-token",
+    symbol: "klay",
+    name: "Klaytn",
+    market_cap_rank: 76,
+    thumb: "/placeholder.svg?height=32&width=32",
+  },
+  { id: "fantom", symbol: "ftm", name: "Fantom", market_cap_rank: 78, thumb: "/placeholder.svg?height=32&width=32" },
+  { id: "harmony", symbol: "one", name: "Harmony", market_cap_rank: 80, thumb: "/placeholder.svg?height=32&width=32" },
+  { id: "zilliqa", symbol: "zil", name: "Zilliqa", market_cap_rank: 82, thumb: "/placeholder.svg?height=32&width=32" },
+  { id: "waves", symbol: "waves", name: "Waves", market_cap_rank: 84, thumb: "/placeholder.svg?height=32&width=32" },
+  { id: "qtum", symbol: "qtum", name: "Qtum", market_cap_rank: 86, thumb: "/placeholder.svg?height=32&width=32" },
+  {
+    id: "ontology",
+    symbol: "ont",
+    name: "Ontology",
+    market_cap_rank: 88,
+    thumb: "/placeholder.svg?height=32&width=32",
+  },
+  { id: "icon", symbol: "icx", name: "ICON", market_cap_rank: 92, thumb: "/placeholder.svg?height=32&width=32" },
+  { id: "verge", symbol: "xvg", name: "Verge", market_cap_rank: 94, thumb: "/placeholder.svg?height=32&width=32" },
+  { id: "nano", symbol: "xno", name: "Nano", market_cap_rank: 96, thumb: "/placeholder.svg?height=32&width=32" },
+  {
+    id: "digibyte",
+    symbol: "dgb",
+    name: "DigiByte",
+    market_cap_rank: 98,
+    thumb: "/placeholder.svg?height=32&width=32",
+  },
+
   // AI & Gaming tokens (as specified)
   { id: "ai16z", symbol: "ai16z", name: "AI16Z", market_cap_rank: 50, thumb: "/placeholder.svg?height=32&width=32" },
   {
@@ -187,6 +303,14 @@ const TOKEN_DATABASE: SearchResult[] = [
   },
 ]
 
+// Metals data database
+const METALS_DATABASE: SearchResult[] = [
+  { id: "XAU", symbol: "XAU", name: "Gold", market_cap_rank: 1, thumb: "/gold-metal.png" },
+  { id: "XAG", symbol: "XAG", name: "Silver", market_cap_rank: 2, thumb: "/silver-metal.png" },
+  { id: "XPT", symbol: "XPT", name: "Platinum", market_cap_rank: 3, thumb: "/platinum-metal.png" },
+  { id: "XPD", symbol: "XPD", name: "Palladium", market_cap_rank: 4, thumb: "/palladium-metal.jpg" },
+]
+
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 5000): Promise<Response> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeout)
@@ -240,55 +364,140 @@ function fuzzySearch(query: string, tokens: SearchResult[]): SearchResult[] {
     .slice(0, 10)
 }
 
+async function searchMetals(query: string): Promise<SearchResult[]> {
+  const lowerQuery = query.toLowerCase().trim()
+
+  // Check if query matches any metals
+  const metalMatches = METALS_DATABASE.filter((metal) => {
+    const nameMatch = metal.name.toLowerCase().includes(lowerQuery)
+    const symbolMatch = metal.symbol.toLowerCase().includes(lowerQuery)
+    return nameMatch || symbolMatch
+  })
+
+  if (metalMatches.length > 0) {
+    try {
+      const baseUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : process.env.NODE_ENV === "production"
+          ? "https://shadow-signals.vercel.app"
+          : "http://localhost:3000"
+
+      const metalsResponse = await fetchWithTimeout(`${baseUrl}/api/metals`, {}, 3000)
+      if (metalsResponse.ok) {
+        const responseText = await metalsResponse.text()
+        const metalsData = safeJsonParse<any>(responseText)
+
+        if (metalsData?.success && metalsData?.data) {
+          // Enhance metal results with current price data
+          return metalMatches.map((metal) => ({
+            ...metal,
+            current_price: metalsData.data?.[metal.symbol]?.price || null,
+            price_change_24h: metalsData.data?.[metal.symbol]?.change || null,
+          }))
+        }
+      }
+    } catch (error) {
+      console.warn("Metals API failed during search:", error)
+    }
+  }
+
+  return metalMatches
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const query = searchParams.get("q") || searchParams.get("query") || ""
 
-  if (!query.trim()) {
+  if (!query.trim() || query.trim().length < 2) {
     const errorResponse: ApiResponse<SearchResult[]> = {
       success: false,
-      error: "Query parameter is required",
+      error: "Query must be at least 2 characters long",
     }
     return NextResponse.json(errorResponse, { status: 400 })
   }
 
   try {
-    // Try CoinGecko API first
-    const response = await fetchWithTimeout(`${COINGECKO_BASE_URL}/search?query=${encodeURIComponent(query)}`)
+    const [cryptoResults, metalsResults] = await Promise.allSettled([
+      // Crypto search (existing logic)
+      (async () => {
+        try {
+          const response = await fetchWithTimeout(`${COINGECKO_BASE_URL}/search?query=${encodeURIComponent(query)}`)
 
-    if (response.ok) {
-      const text = await response.text()
-      const data = safeJsonParse<{ coins: SearchResult[] }>(text)
+          if (response.ok) {
+            const text = await response.text()
+            if (
+              text.trim().startsWith("<!DOCTYPE") ||
+              text.trim().startsWith("<html") ||
+              text.trim().startsWith("<HTML") ||
+              text.includes("<!DOCTYPE html>") ||
+              text.includes("<title>") ||
+              !text.trim().startsWith("{")
+            ) {
+              console.warn("CoinGecko returned HTML instead of JSON for query:", query)
+              throw new Error("Invalid response format - HTML received")
+            }
 
-      if (data?.coins && Array.isArray(data.coins)) {
-        const results = data.coins.slice(0, 10).map((coin: any) => ({
-          id: coin.id || coin.symbol,
-          symbol: coin.symbol || "",
-          name: coin.name || "",
-          market_cap_rank: coin.market_cap_rank || 999,
-          thumb: coin.thumb || `/placeholder.svg?height=32&width=32&query=${coin.name}+logo`,
-        }))
+            const data = safeJsonParse<{ coins: SearchResult[] }>(text)
 
-        const apiResponse: ApiResponse<SearchResult[]> = {
-          success: true,
-          data: results,
+            if (data?.coins && Array.isArray(data.coins)) {
+              return data.coins.slice(0, 8).map((coin: any) => ({
+                id: coin.id || coin.symbol,
+                symbol: coin.symbol || "",
+                name: coin.name || "",
+                market_cap_rank: coin.market_cap_rank || 999,
+                thumb: coin.thumb || `/placeholder.svg?height=32&width=32&query=${coin.name}+logo`,
+                type: "crypto",
+              }))
+            }
+          }
+        } catch (error) {
+          console.warn("CoinGecko search failed for query:", query, error)
         }
 
-        return NextResponse.json(apiResponse)
-      }
+        // Fallback to local crypto database
+        return fuzzySearch(query, TOKEN_DATABASE).map((token) => ({ ...token, type: "crypto" }))
+      })(),
+
+      // Metals search
+      searchMetals(query),
+    ])
+
+    let combinedResults: SearchResult[] = []
+
+    if (metalsResults.status === "fulfilled" && metalsResults.value.length > 0) {
+      combinedResults.push(...metalsResults.value.map((metal) => ({ ...metal, type: "metal" })))
     }
+
+    if (cryptoResults.status === "fulfilled" && cryptoResults.value) {
+      combinedResults.push(...cryptoResults.value)
+    }
+
+    // Limit total results to 10
+    combinedResults = combinedResults.slice(0, 10)
+
+    const apiResponse: ApiResponse<SearchResult[]> = {
+      success: true,
+      data: combinedResults,
+    }
+
+    return NextResponse.json(apiResponse)
   } catch (error) {
-    console.warn("CoinGecko search failed:", error)
+    console.error("Search API error:", error)
+
+    // Final fallback to local databases only
+    const cryptoFallback = fuzzySearch(query, TOKEN_DATABASE).map((token) => ({ ...token, type: "crypto" }))
+    const metalsFallback = METALS_DATABASE.filter(
+      (metal) =>
+        metal.name.toLowerCase().includes(query.toLowerCase()) ||
+        metal.symbol.toLowerCase().includes(query.toLowerCase()),
+    ).map((metal) => ({ ...metal, type: "metal" }))
+
+    const fallbackResponse: ApiResponse<SearchResult[]> = {
+      success: true,
+      data: [...metalsFallback, ...cryptoFallback].slice(0, 10),
+      fallback: true,
+    }
+
+    return NextResponse.json(fallbackResponse)
   }
-
-  // Fallback to local database search
-  const fallbackResults = fuzzySearch(query, TOKEN_DATABASE)
-
-  const fallbackResponse: ApiResponse<SearchResult[]> = {
-    success: true,
-    data: fallbackResults,
-    fallback: true,
-  }
-
-  return NextResponse.json(fallbackResponse)
 }

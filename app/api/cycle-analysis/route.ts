@@ -204,16 +204,21 @@ export async function GET() {
     let altcoin_season_signal: "btc-season" | "neutral" | "alt-season"
     let altseason_progress: number
 
-    if (ethBtcRatio < params.altseason_thresholds.eth_btc_ratio_low) {
+    const smoothedEthBtcRatio = Math.round(ethBtcRatio * 10000) / 10000 // Round to 4 decimals for stability
+    const smoothedBtcDominance = Math.round(btcDominance * 100) / 100 // Round to 2 decimals
+
+    if (smoothedEthBtcRatio < params.altseason_thresholds.eth_btc_ratio_low) {
       altcoin_season_signal = "btc-season"
-      altseason_progress = Math.max(0, Math.min(25, ((ethBtcRatio - 0.025) / 0.007) * 25))
-    } else if (ethBtcRatio < 0.045) {
+      altseason_progress = Math.max(0, Math.min(25, ((smoothedEthBtcRatio - 0.025) / 0.007) * 25))
+    } else if (smoothedEthBtcRatio < 0.045) {
       altcoin_season_signal = "neutral"
-      altseason_progress = 25 + ((ethBtcRatio - params.altseason_thresholds.eth_btc_ratio_low) / 0.013) * 35
+      altseason_progress = 25 + ((smoothedEthBtcRatio - params.altseason_thresholds.eth_btc_ratio_low) / 0.013) * 35
     } else {
       altcoin_season_signal = "alt-season"
-      altseason_progress = Math.min(100, 60 + ((ethBtcRatio - 0.045) / 0.035) * 40)
+      altseason_progress = Math.min(100, 60 + ((smoothedEthBtcRatio - 0.045) / 0.035) * 40)
     }
+
+    altseason_progress = Math.round(altseason_progress)
 
     // Funding Rates Health (simplified estimation)
     // Positive but not excessive funding rates indicate healthy bull market
@@ -325,6 +330,8 @@ export async function GET() {
       mvrv_z_score: Math.round(mvrv_z_score * 10) / 10,
       altcoin_season_signal,
       altseason_progress: Math.round(altseason_progress),
+      smoothedEthBtcRatio,
+      smoothedBtcDominance,
       bull_top_confluence_score: Math.round(confluenceScore),
       confluenceBreakdown,
       predicted_top_date: predictedTop.toLocaleDateString(),
