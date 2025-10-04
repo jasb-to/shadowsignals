@@ -85,56 +85,123 @@ function updateWeeklyParameters() {
   console.log("[v0] Weekly parameters updated:", weeklyParameters)
 }
 
+const cache = {
+  data: null as any,
+  timestamp: 0,
+  TTL: 10 * 60 * 1000, // 10 minutes cache
+}
+
+function getCachedData() {
+  const now = Date.now()
+  if (cache.data && now - cache.timestamp < cache.TTL) {
+    console.log("[v0] Using cached cycle analysis data (age:", Math.floor((now - cache.timestamp) / 1000), "seconds)")
+    return cache.data
+  }
+  return null
+}
+
+function setCachedData(data: any) {
+  cache.data = data
+  cache.timestamp = Date.now()
+  console.log("[v0] Cached cycle analysis data for", cache.TTL / 1000, "seconds")
+}
+
 export async function GET() {
   try {
     console.log("[v0] Cycle analysis API called")
 
+    const cachedData = getCachedData()
+    if (cachedData) {
+      return NextResponse.json(
+        {
+          success: true,
+          data: cachedData,
+          cached: true,
+        },
+        {
+          headers: {
+            "Cache-Control": "public, s-maxage=604800, stale-while-revalidate=86400",
+          },
+        },
+      )
+    }
+
     const params = getWeeklyParameters()
 
-    const [btcResponse, ethResponse, globalResponse] = await Promise.all([
-      fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true"),
-      fetch(
+    const fetchWithTimeout = async (url: string, timeout = 5000) => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), timeout)
+      try {
+        const response = await fetch(url, { signal: controller.signal })
+        clearTimeout(timeoutId)
+        return response
+      } catch (error) {
+        clearTimeout(timeoutId)
+        throw error
+      }
+    }
+
+    const [btcResponse, ethResponse, globalResponse] = await Promise.allSettled([
+      fetchWithTimeout(
+        "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true",
+      ),
+      fetchWithTimeout(
         "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd,btc&include_24hr_change=true",
       ),
-      fetch("https://api.coingecko.com/api/v3/global"),
+      fetchWithTimeout("https://api.coingecko.com/api/v3/global"),
     ])
 
     console.log("[v0] API responses received:", {
-      btcOk: btcResponse.ok,
-      ethOk: ethResponse.ok,
-      globalOk: globalResponse.ok,
+      btcOk: btcResponse.status === "fulfilled" && btcResponse.value.ok,
+      ethOk: ethResponse.status === "fulfilled" && ethResponse.value.ok,
+      globalOk: globalResponse.status === "fulfilled" && globalResponse.value.ok,
     })
 
     let btcData, ethData, globalData
 
-    try {
-      const btcText = await btcResponse.text()
-      btcData = btcText.startsWith("{") ? JSON.parse(btcText) : {}
-    } catch (e) {
-      console.log("[v0] BTC data parsing failed, using fallback")
+    if (btcResponse.status === "fulfilled" && btcResponse.value.ok) {
+      try {
+        const btcText = await btcResponse.value.text()
+        btcData = btcText.startsWith("{") ? JSON.parse(btcText) : {}
+      } catch (e) {
+        console.log("[v0] BTC data parsing failed, using fallback")
+        btcData = {}
+      }
+    } else {
+      console.log("[v0] BTC API failed (rate limit?), using fallback data")
       btcData = {}
     }
 
-    try {
-      const ethText = await ethResponse.text()
-      ethData = ethText.startsWith("{") ? JSON.parse(ethText) : {}
-    } catch (e) {
-      console.log("[v0] ETH data parsing failed, using fallback")
+    if (ethResponse.status === "fulfilled" && ethResponse.value.ok) {
+      try {
+        const ethText = await ethResponse.value.text()
+        ethData = ethText.startsWith("{") ? JSON.parse(ethText) : {}
+      } catch (e) {
+        console.log("[v0] ETH data parsing failed, using fallback")
+        ethData = {}
+      }
+    } else {
+      console.log("[v0] ETH API failed (rate limit?), using fallback data")
       ethData = {}
     }
 
-    try {
-      const globalText = await globalResponse.text()
-      globalData = globalText.startsWith("{") ? JSON.parse(globalText) : { data: {} }
-    } catch (e) {
-      console.log("[v0] Global data parsing failed, using fallback")
+    if (globalResponse.status === "fulfilled" && globalResponse.value.ok) {
+      try {
+        const globalText = await globalResponse.value.text()
+        globalData = globalText.startsWith("{") ? JSON.parse(globalText) : { data: {} }
+      } catch (e) {
+        console.log("[v0] Global data parsing failed, using fallback")
+        globalData = { data: {} }
+      }
+    } else {
+      console.log("[v0] Global API failed (rate limit?), using fallback data")
       globalData = { data: {} }
     }
 
-    const currentBtcPrice = btcData.bitcoin?.usd || 117000
-    const currentEthPrice = ethData.ethereum?.usd || 4000
-    const ethBtcRatio = ethData.ethereum?.btc || 0.034
-    const btcDominance = globalData.data?.market_cap_percentage?.btc || 52
+    const currentBtcPrice = btcData.bitcoin?.usd || 121800
+    const currentEthPrice = ethData.ethereum?.usd || 4460
+    const ethBtcRatio = ethData.ethereum?.btc || 0.0366
+    const btcDominance = globalData.data?.market_cap_percentage?.btc || 57
 
     console.log("[v0] Market data:", { currentBtcPrice, ethBtcRatio, btcDominance })
 
@@ -337,12 +404,40 @@ export async function GET() {
       predicted_top_date: predictedTop.toLocaleDateString(),
     })
 
-    return NextResponse.json({
-      success: true,
-      data: cycleAnalysis,
-    })
+    setCachedData(cycleAnalysis)
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: cycleAnalysis,
+      },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=604800, stale-while-revalidate=86400",
+        },
+      },
+    )
   } catch (error) {
     console.error("[v0] Cycle analysis error:", error)
+
+    const cachedData = cache.data
+    if (cachedData) {
+      console.log("[v0] Returning stale cached data due to error")
+      return NextResponse.json(
+        {
+          success: true,
+          data: cachedData,
+          cached: true,
+          stale: true,
+        },
+        {
+          headers: {
+            "Cache-Control": "public, s-maxage=604800, stale-while-revalidate=86400",
+          },
+        },
+      )
+    }
+
     return NextResponse.json(
       {
         success: false,
