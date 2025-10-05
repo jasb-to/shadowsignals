@@ -166,14 +166,14 @@ async function fetchTradingViewMarketCaps(): Promise<{
         })
 
         if (
-          totalMarketCap >= 2000000000000 && // At least $2T (was $3T)
-          totalMarketCap <= 15000000000000 && // At most $15T (was $10T)
-          total3MarketCap >= 300000000000 && // At least $300B (was $500B)
-          total3MarketCap <= 8000000000000 && // At most $8T (was $5T)
-          btcDominance >= 35 && // Lowered from 40
-          btcDominance <= 75 && // Raised from 70
-          usdtDominance >= 1 && // Lowered from 2
-          usdtDominance <= 15 // Raised from 10
+          totalMarketCap >= 3000000000000 && // Raised from $2T to $3T for stricter validation
+          totalMarketCap <= 6000000000000 && // Lowered from $15T to $6T for realistic range
+          total3MarketCap >= 800000000000 && // Raised from $300B to $800B
+          total3MarketCap <= 2500000000000 && // Lowered from $8T to $2.5T
+          btcDominance >= 50 && // Raised from 35 to 50 for current market
+          btcDominance <= 65 && // Lowered from 75 to 65
+          usdtDominance >= 3 && // Raised from 1 to 3
+          usdtDominance <= 6 // Lowered from 15 to 6
         ) {
           console.log("[v0] ✅ TradingView data validated successfully")
 
@@ -187,10 +187,10 @@ async function fetchTradingViewMarketCaps(): Promise<{
           return result
         } else {
           console.log("[v0] ❌ TradingView data failed validation:", {
-            totalMarketCapValid: totalMarketCap >= 2000000000000 && totalMarketCap <= 15000000000000,
-            total3MarketCapValid: total3MarketCap >= 300000000000 && total3MarketCap <= 8000000000000,
-            btcDominanceValid: btcDominance >= 35 && btcDominance <= 75,
-            usdtDominanceValid: usdtDominance >= 1 && usdtDominance <= 15,
+            totalMarketCapValid: totalMarketCap >= 3000000000000 && totalMarketCap <= 6000000000000,
+            total3MarketCapValid: total3MarketCap >= 800000000000 && total3MarketCap <= 2500000000000,
+            btcDominanceValid: btcDominance >= 50 && btcDominance <= 65,
+            usdtDominanceValid: usdtDominance >= 3 && usdtDominance <= 6,
           })
         }
       }
@@ -237,24 +237,11 @@ export async function GET() {
     })
 
     if (tradingViewBTC && tradingViewMarketCaps) {
-      console.log("[v0] ✅ TradingView data complete - using exclusively")
+      console.log("[v0] ✅ TradingView data complete - using exclusively without CoinGecko")
 
-      // Get basic global data from CoinGecko for volume and change percentage only
-      let volumeData = { volume24h: 150000000000, changePercentage: 0 }
-      try {
-        const globalResponse = await fetchWithTimeout(`${COINGECKO_BASE_URL}/global`, {}, 5000)
-        if (globalResponse.ok) {
-          const globalText = await globalResponse.text()
-          const globalData = safeJsonParse<any>(globalText)
-          if (globalData?.data) {
-            volumeData = {
-              volume24h: globalData.data.total_volume?.usd || 150000000000,
-              changePercentage: globalData.data.market_cap_change_percentage_24h_usd || 0,
-            }
-          }
-        }
-      } catch (error) {
-        console.log("[v0] Could not fetch volume data, using defaults")
+      const volumeData = {
+        volume24h: 150000000000, // Default $150B daily volume
+        changePercentage: tradingViewBTC.change24h, // Use BTC change as proxy for market change
       }
 
       const activeCryptos = 14931 // Current approximate count
@@ -361,13 +348,9 @@ export async function GET() {
         const estimatedUsdtPairs = Math.floor(activeCryptos * 0.6)
 
         const totalMarketCap = globalData.data.total_market_cap?.usd || 0
-        const total3MarketCap =
-          globalData.data.market_cap_change_percentage_24h_usd ||
-          (() => {
-            const btcMarketCap = btcPriceData.bitcoin.usd_market_cap || btcData?.market_data?.market_cap?.usd || 0
-            const ethMarketCap = ethData?.market_data?.market_cap?.usd || 0
-            return Math.max(900000000000, totalMarketCap - btcMarketCap - ethMarketCap)
-          })()
+        const btcMarketCap = btcPriceData.bitcoin.usd_market_cap || btcData?.market_data?.market_cap?.usd || 0
+        const ethMarketCap = ethData?.market_data?.market_cap?.usd || 0
+        const total3MarketCap = Math.max(900000000000, totalMarketCap - btcMarketCap - ethMarketCap)
 
         console.log("[v0] Market cap calculation:", {
           totalMarketCap,
@@ -378,15 +361,14 @@ export async function GET() {
         const marketCapTrillion = totalMarketCap / 1000000000000
         const activeAnalysisCount = Math.floor(marketCapTrillion * 50)
 
-        const btcMarketCap = btcPriceData.bitcoin.usd_market_cap || btcData?.market_data?.market_cap?.usd || 0
         const accurateBtcDominance = (btcMarketCap / totalMarketCap) * 100
 
         let validatedBtcDominance = accurateBtcDominance
-        if (accurateBtcDominance < 35 || accurateBtcDominance > 75) {
+        if (accurateBtcDominance < 50 || accurateBtcDominance > 65) {
           console.log(`[v0] BTC dominance ${accurateBtcDominance.toFixed(2)}% seems invalid, recalculating...`)
 
           const altDominance = globalData.data.market_cap_percentage?.btc
-          if (altDominance && altDominance >= 35 && altDominance <= 75) {
+          if (altDominance && altDominance >= 50 && altDominance <= 65) {
             validatedBtcDominance = altDominance
             console.log(`[v0] Using alternative BTC dominance: ${validatedBtcDominance.toFixed(2)}%`)
           }
@@ -514,19 +496,19 @@ export async function GET() {
         const marketCapTrillion = totalMarketCap / 1000000000000
         const activeAnalysisCount = Math.floor(marketCapTrillion * 50)
 
-        const accurateBtcDominance = (btcMarketCap / totalMarketCap) * 100
-
         console.log("[v0] CoinPaprika market cap calculation:", {
           totalMarketCap,
           btcMarketCap,
           ethMarketCap,
           total3MarketCap,
-          btcDominance: accurateBtcDominance,
+          btcDominance: (btcMarketCap / totalMarketCap) * 100,
         })
 
-        let validatedBtcDominance = accurateBtcDominance
-        if (accurateBtcDominance < 35 || accurateBtcDominance > 75) {
-          console.log(`[v0] CoinPaprika BTC dominance ${accurateBtcDominance}% seems invalid, using fallback`)
+        let validatedBtcDominance = (btcMarketCap / totalMarketCap) * 100
+        if (validatedBtcDominance < 50 || validatedBtcDominance > 65) {
+          console.log(
+            `[v0] CoinPaprika BTC dominance ${validatedBtcDominance.toFixed(2)}% seems invalid, using fallback`,
+          )
           validatedBtcDominance = 58.2 // Current market value
         }
 

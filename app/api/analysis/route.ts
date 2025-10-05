@@ -1017,26 +1017,54 @@ async function fetchCommodityPrice(
   try {
     console.log(`[v0] Fetching commodity price for ${symbol}`)
 
-    // Map commodity symbols to Yahoo Finance symbols
     const commodityMap: Record<string, string> = {
+      // Precious Metals
       GOLD: "GC=F",
       XAUUSD: "GC=F", // Gold futures
       SILVER: "SI=F",
       XAGUSD: "SI=F", // Silver futures
+      PLATINUM: "PL=F",
+      XPTUSD: "PL=F", // Platinum futures
+      PALLADIUM: "PA=F",
+      XPDUSD: "PA=F", // Palladium futures
+
+      // Energy
       CRUDE: "CL=F",
       "CRUDE OIL": "CL=F",
       WTIUSD: "CL=F",
       USOIL: "CL=F",
       OIL: "CL=F",
+      WTI: "CL=F",
+      BRENT: "BZ=F", // Brent Crude Oil
+      BRENTOIL: "BZ=F",
       "NATURAL GAS": "NG=F",
+      NATGAS: "NG=F",
       GAS: "NG=F",
+      "HEATING OIL": "HO=F",
+      HEATINGOIL: "HO=F",
+      GASOLINE: "RB=F",
+      RBOB: "RB=F",
+
+      // Industrial Metals
       COPPER: "HG=F",
+
+      // Agricultural
       WHEAT: "ZW=F",
       CORN: "ZC=F",
-      PLATINUM: "PL=F",
-      XPTUSD: "PL=F", // Platinum futures
-      PALLADIUM: "PA=F",
-      XPDUSD: "PA=F", // Palladium futures
+      SOYBEANS: "ZS=F",
+      SOYBEAN: "ZS=F",
+      SUGAR: "SB=F",
+      COFFEE: "KC=F",
+      COTTON: "CT=F",
+      COCOA: "CC=F",
+      RICE: "ZR=F",
+      OATS: "ZO=F",
+
+      // Livestock
+      "LIVE CATTLE": "LE=F",
+      CATTLE: "LE=F",
+      "LEAN HOGS": "HE=F",
+      HOGS: "HE=F",
     }
 
     const yahooSymbol = commodityMap[symbol.toUpperCase()] || symbol
@@ -1078,24 +1106,53 @@ async function fetchCommodityPrice(
     }
 
     const fallbackPrices: Record<string, { price: number; change24h: number; marketCap: number; volume: number }> = {
-      GOLD: { price: 3884, change24h: 1.2, marketCap: 3884000000000, volume: 50000000 },
-      XAUUSD: { price: 3884, change24h: 1.2, marketCap: 3884000000000, volume: 50000000 },
-      SILVER: { price: 32.5, change24h: -0.8, marketCap: 32500000000, volume: 15000000 },
-      XAGUSD: { price: 32.5, change24h: -0.8, marketCap: 32500000000, volume: 15000000 },
+      // Precious Metals
+      GOLD: { price: 2677, change24h: 1.2, marketCap: 2677000000000, volume: 50000000 },
+      XAUUSD: { price: 2677, change24h: 1.2, marketCap: 2677000000000, volume: 50000000 },
+      SILVER: { price: 32.15, change24h: -0.8, marketCap: 32150000000, volume: 15000000 },
+      XAGUSD: { price: 32.15, change24h: -0.8, marketCap: 32150000000, volume: 15000000 },
+      PLATINUM: { price: 1011.5, change24h: 0.8, marketCap: 1011500000, volume: 3000000 },
+      XPTUSD: { price: 1011.5, change24h: 0.8, marketCap: 1011500000, volume: 3000000 },
+      PALLADIUM: { price: 1050, change24h: -0.4, marketCap: 1050000000, volume: 2000000 },
+      XPDUSD: { price: 1050, change24h: -0.4, marketCap: 1050000000, volume: 2000000 },
+
+      // Energy
       CRUDE: { price: 76.0, change24h: 0.5, marketCap: 76000000000, volume: 100000000 },
       "CRUDE OIL": { price: 76.0, change24h: 0.5, marketCap: 76000000000, volume: 100000000 },
       WTIUSD: { price: 76.0, change24h: 0.5, marketCap: 76000000000, volume: 100000000 },
       USOIL: { price: 76.0, change24h: 0.5, marketCap: 76000000000, volume: 100000000 },
       OIL: { price: 76.0, change24h: 0.5, marketCap: 76000000000, volume: 100000000 },
-      "NATURAL GAS": { price: 2.85, change24h: -1.2, marketCap: 2850000000, volume: 25000000 },
-      GAS: { price: 2.85, change24h: -1.2, marketCap: 2850000000, volume: 25000000 },
+      WTI: { price: 76.0, change24h: 0.5, marketCap: 76000000000, volume: 100000000 },
+      BRENT: { price: 79.5, change24h: 0.6, marketCap: 79500000000, volume: 95000000 },
+      BRENTOIL: { price: 79.5, change24h: 0.6, marketCap: 79500000000, volume: 95000000 },
+      "NATURAL GAS": { price: 3.45, change24h: -1.2, marketCap: 3450000000, volume: 25000000 },
+      NATGAS: { price: 3.45, change24h: -1.2, marketCap: 3450000000, volume: 25000000 },
+      GAS: { price: 3.45, change24h: -1.2, marketCap: 3450000000, volume: 25000000 },
+      "HEATING OIL": { price: 2.45, change24h: 0.3, marketCap: 2450000000, volume: 8000000 },
+      HEATINGOIL: { price: 2.45, change24h: 0.3, marketCap: 2450000000, volume: 8000000 },
+      GASOLINE: { price: 2.15, change24h: 0.4, marketCap: 2150000000, volume: 12000000 },
+      RBOB: { price: 2.15, change24h: 0.4, marketCap: 2150000000, volume: 12000000 },
+
+      // Industrial Metals
       COPPER: { price: 4.25, change24h: 0.3, marketCap: 4250000000, volume: 8000000 },
+
+      // Agricultural
       WHEAT: { price: 5.45, change24h: -0.5, marketCap: 5450000000, volume: 5000000 },
       CORN: { price: 4.85, change24h: 0.2, marketCap: 4850000000, volume: 6000000 },
-      PLATINUM: { price: 1050, change24h: 0.8, marketCap: 1050000000, volume: 3000000 },
-      XPTUSD: { price: 1050, change24h: 0.8, marketCap: 1050000000, volume: 3000000 },
-      PALLADIUM: { price: 1200, change24h: -0.4, marketCap: 1200000000, volume: 2000000 },
-      XPDUSD: { price: 1200, change24h: -0.4, marketCap: 1200000000, volume: 2000000 },
+      SOYBEANS: { price: 11.25, change24h: 0.6, marketCap: 11250000000, volume: 7000000 },
+      SOYBEAN: { price: 11.25, change24h: 0.6, marketCap: 11250000000, volume: 7000000 },
+      SUGAR: { price: 0.19, change24h: -0.3, marketCap: 190000000, volume: 3000000 },
+      COFFEE: { price: 3.25, change24h: 1.1, marketCap: 3250000000, volume: 4000000 },
+      COTTON: { price: 0.72, change24h: 0.2, marketCap: 720000000, volume: 2000000 },
+      COCOA: { price: 11500, change24h: 2.5, marketCap: 11500000000, volume: 5000000 },
+      RICE: { price: 17.5, change24h: 0.1, marketCap: 17500000000, volume: 1500000 },
+      OATS: { price: 3.85, change24h: -0.2, marketCap: 3850000000, volume: 800000 },
+
+      // Livestock
+      "LIVE CATTLE": { price: 185.5, change24h: 0.4, marketCap: 185500000, volume: 2500000 },
+      CATTLE: { price: 185.5, change24h: 0.4, marketCap: 185500000, volume: 2500000 },
+      "LEAN HOGS": { price: 82.5, change24h: -0.6, marketCap: 82500000, volume: 1800000 },
+      HOGS: { price: 82.5, change24h: -0.6, marketCap: 82500000, volume: 1800000 },
     }
 
     const fallback = fallbackPrices[symbol.toUpperCase()]
