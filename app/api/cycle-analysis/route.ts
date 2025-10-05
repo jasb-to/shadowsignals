@@ -141,67 +141,74 @@ export async function GET() {
       }
     }
 
-    const [btcResponse, ethResponse, globalResponse] = await Promise.allSettled([
-      fetchWithTimeout(
-        "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true",
-      ),
-      fetchWithTimeout(
-        "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd,btc&include_24hr_change=true",
-      ),
-      fetchWithTimeout("https://api.coingecko.com/api/v3/global"),
+    const [btcResponse, ethResponse, marketOverviewResponse] = await Promise.allSettled([
+      fetchWithTimeout("https://api.coinpaprika.com/v1/tickers/btc-bitcoin"),
+      fetchWithTimeout("https://api.coinpaprika.com/v1/tickers/eth-ethereum"),
+      fetchWithTimeout("/api/market-overview"),
     ])
 
     console.log("[v0] API responses received:", {
       btcOk: btcResponse.status === "fulfilled" && btcResponse.value.ok,
       ethOk: ethResponse.status === "fulfilled" && ethResponse.value.ok,
-      globalOk: globalResponse.status === "fulfilled" && globalResponse.value.ok,
+      marketOverviewOk: marketOverviewResponse.status === "fulfilled" && marketOverviewResponse.value.ok,
     })
 
-    let btcData, ethData, globalData
+    let btcData, ethData, marketOverviewData
 
     if (btcResponse.status === "fulfilled" && btcResponse.value.ok) {
       try {
         const btcText = await btcResponse.value.text()
-        btcData = btcText.startsWith("{") ? JSON.parse(btcText) : {}
+        const btcJson = btcText.startsWith("{") ? JSON.parse(btcText) : {}
+        btcData = {
+          price: btcJson.quotes?.USD?.price || 121800,
+          change_24h: btcJson.quotes?.USD?.percent_change_24h || 0,
+        }
       } catch (e) {
         console.log("[v0] BTC data parsing failed, using fallback")
-        btcData = {}
+        btcData = { price: 121800, change_24h: 0 }
       }
     } else {
-      console.log("[v0] BTC API failed (rate limit?), using fallback data")
-      btcData = {}
+      console.log("[v0] BTC API failed, using fallback data")
+      btcData = { price: 121800, change_24h: 0 }
     }
 
     if (ethResponse.status === "fulfilled" && ethResponse.value.ok) {
       try {
         const ethText = await ethResponse.value.text()
-        ethData = ethText.startsWith("{") ? JSON.parse(ethText) : {}
+        const ethJson = ethText.startsWith("{") ? JSON.parse(ethText) : {}
+        ethData = {
+          price: ethJson.quotes?.USD?.price || 4460,
+          btc_ratio: ethJson.quotes?.USD?.price ? ethJson.quotes.USD.price / btcData.price : 0.0366,
+        }
       } catch (e) {
         console.log("[v0] ETH data parsing failed, using fallback")
-        ethData = {}
+        ethData = { price: 4460, btc_ratio: 0.0366 }
       }
     } else {
-      console.log("[v0] ETH API failed (rate limit?), using fallback data")
-      ethData = {}
+      console.log("[v0] ETH API failed, using fallback data")
+      ethData = { price: 4460, btc_ratio: 0.0366 }
     }
 
-    if (globalResponse.status === "fulfilled" && globalResponse.value.ok) {
+    if (marketOverviewResponse.status === "fulfilled" && marketOverviewResponse.value.ok) {
       try {
-        const globalText = await globalResponse.value.text()
-        globalData = globalText.startsWith("{") ? JSON.parse(globalText) : { data: {} }
+        const marketText = await marketOverviewResponse.value.text()
+        const marketJson = marketText.startsWith("{") ? JSON.parse(marketText) : {}
+        marketOverviewData = {
+          btc_dominance: marketJson.btc_dominance || 57,
+        }
       } catch (e) {
-        console.log("[v0] Global data parsing failed, using fallback")
-        globalData = { data: {} }
+        console.log("[v0] Market overview data parsing failed, using fallback")
+        marketOverviewData = { btc_dominance: 57 }
       }
     } else {
-      console.log("[v0] Global API failed (rate limit?), using fallback data")
-      globalData = { data: {} }
+      console.log("[v0] Market overview API failed, using fallback data")
+      marketOverviewData = { btc_dominance: 57 }
     }
 
-    const currentBtcPrice = btcData.bitcoin?.usd || 121800
-    const currentEthPrice = ethData.ethereum?.usd || 4460
-    const ethBtcRatio = ethData.ethereum?.btc || 0.0366
-    const btcDominance = globalData.data?.market_cap_percentage?.btc || 57
+    const currentBtcPrice = btcData.price
+    const currentEthPrice = ethData.price
+    const ethBtcRatio = ethData.btc_ratio
+    const btcDominance = marketOverviewData.btc_dominance
 
     console.log("[v0] Market data:", { currentBtcPrice, ethBtcRatio, btcDominance })
 
@@ -350,7 +357,7 @@ export async function GET() {
       }
     } else {
       // Market is trending - determine direction based on 24h change and position in range
-      const btc24hChange = btcData.bitcoin?.usd_24h_change || 0
+      const btc24hChange = btcData.change_24h
       const trendDirection = btc24hChange > 0 && currentPosition > 0.5 ? "trending_up" : "trending_down"
       rangingStatus = trendDirection
       breakoutProbability = 85
