@@ -1021,9 +1021,10 @@ async function fetchCommodityPrice(
     const commodityMap: Record<string, string> = {
       GOLD: "GC=F",
       SILVER: "SI=F",
-      CRUDE: "CL=F", // Added mapping for CRUDE
+      CRUDE: "CL=F",
       "CRUDE OIL": "CL=F",
-      WTIUSD: "CL=F", // Added mapping for WTIUSD
+      WTIUSD: "CL=F",
+      USOIL: "CL=F", // Added USOIL mapping
       OIL: "CL=F",
       "NATURAL GAS": "NG=F",
       GAS: "NG=F",
@@ -1035,6 +1036,8 @@ async function fetchCommodityPrice(
     }
 
     const yahooSymbol = commodityMap[symbol.toUpperCase()] || symbol
+
+    console.log(`[v0] Mapped ${symbol} to Yahoo symbol: ${yahooSymbol}`)
 
     // Try Yahoo Finance API
     const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=7d`
@@ -1057,7 +1060,7 @@ async function fetchCommodityPrice(
         if (currentPrice > 0) {
           const change24h = previousClose > 0 ? ((currentPrice - previousClose) / previousClose) * 100 : 0
 
-          console.log(`[v0] Yahoo Finance success for ${symbol}: $${currentPrice}`)
+          console.log(`[v0] Yahoo Finance success for ${symbol}: $${currentPrice}, change: ${change24h.toFixed(2)}%`)
           return {
             price: currentPrice,
             change24h,
@@ -1066,14 +1069,18 @@ async function fetchCommodityPrice(
           }
         }
       }
+    } else {
+      console.log(`[v0] Yahoo Finance failed for ${symbol}: ${response.status} ${response.statusText}`)
     }
 
-    // Fallback prices for commodities
     const fallbackPrices: Record<string, { price: number; change24h: number; marketCap: number; volume: number }> = {
       GOLD: { price: 3884, change24h: 1.2, marketCap: 3884000000000, volume: 50000000 },
       SILVER: { price: 32.5, change24h: -0.8, marketCap: 32500000000, volume: 15000000 },
-      "CRUDE OIL": { price: 73.5, change24h: 0.5, marketCap: 73500000000, volume: 100000000 },
-      OIL: { price: 73.5, change24h: 0.5, marketCap: 73500000000, volume: 100000000 },
+      CRUDE: { price: 76.0, change24h: 0.5, marketCap: 76000000000, volume: 100000000 },
+      "CRUDE OIL": { price: 76.0, change24h: 0.5, marketCap: 76000000000, volume: 100000000 },
+      WTIUSD: { price: 76.0, change24h: 0.5, marketCap: 76000000000, volume: 100000000 },
+      USOIL: { price: 76.0, change24h: 0.5, marketCap: 76000000000, volume: 100000000 },
+      OIL: { price: 76.0, change24h: 0.5, marketCap: 76000000000, volume: 100000000 },
       "NATURAL GAS": { price: 2.85, change24h: -1.2, marketCap: 2850000000, volume: 25000000 },
       GAS: { price: 2.85, change24h: -1.2, marketCap: 2850000000, volume: 25000000 },
       COPPER: { price: 4.25, change24h: 0.3, marketCap: 4250000000, volume: 8000000 },
@@ -1089,6 +1096,7 @@ async function fetchCommodityPrice(
       return fallback
     }
 
+    console.log(`[v0] No fallback price available for ${symbol}`)
     return null
   } catch (error) {
     console.error(`[v0] Commodity price fetch error for ${symbol}:`, error)

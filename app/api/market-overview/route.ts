@@ -11,7 +11,7 @@ interface CacheEntry {
 }
 
 const cache = new Map<string, CacheEntry>()
-const CACHE_DURATION = 60000 // 60 seconds cache
+const CACHE_DURATION = 30000 // 30 seconds cache
 
 function getCachedData(key: string): any | null {
   const entry = cache.get(key)
@@ -98,7 +98,7 @@ async function fetchTradingViewMarketCaps(): Promise<{
   btcDominance: number
   usdtDominance: number
 } | null> {
-  const cached = getCachedData("tradingview_market_caps")
+  const cached = getCachedData("tradingview_market_caps_v3")
   if (cached) return cached
 
   try {
@@ -138,6 +138,8 @@ async function fetchTradingViewMarketCaps(): Promise<{
           const value = item.d[1] // close value
           const change = item.d[2] // 24h change
 
+          console.log(`[v0] TradingView ${symbol} close: ${value}`)
+
           if (symbol.includes("TOTAL3")) {
             results.total3 = { value, change }
           } else if (symbol.includes("TOTAL") && !symbol.includes("TOTAL3")) {
@@ -149,20 +151,18 @@ async function fetchTradingViewMarketCaps(): Promise<{
           }
         })
 
-        console.log("[v0] TradingView market cap data parsed:", {
-          totalMarketCap: results.total?.value,
-          total3MarketCap: results.total3?.value,
-          btcDominance: results.btcDominance?.value,
-          usdtDominance: results.usdtDominance?.value,
-        })
-
-        // Validate the data - TradingView returns market caps in billions
-        const totalMarketCap = (results.total?.value || 0) * 1000000000 // Convert billions to dollars
-        const total3MarketCap = (results.total3?.value || 0) * 1000000000 // Convert billions to dollars
+        const totalMarketCap = results.total?.value || 0
+        const total3MarketCap = results.total3?.value || 0
         const btcDominance = results.btcDominance?.value || 0
         const usdtDominance = results.usdtDominance?.value || 0
 
-        // Validate ranges
+        console.log("[v0] TradingView parsed values:", {
+          totalMarketCap: `$${(totalMarketCap / 1000000000000).toFixed(2)}T`,
+          total3MarketCap: `$${(total3MarketCap / 1000000000000).toFixed(2)}T`,
+          btcDominance: `${btcDominance.toFixed(2)}%`,
+          usdtDominance: `${usdtDominance.toFixed(2)}%`,
+        })
+
         if (
           totalMarketCap >= 3000000000000 && // At least $3T
           totalMarketCap <= 10000000000000 && // At most $10T
@@ -173,12 +173,7 @@ async function fetchTradingViewMarketCaps(): Promise<{
           usdtDominance >= 2 &&
           usdtDominance <= 10
         ) {
-          console.log("[v0] TradingView market cap data validated successfully:", {
-            totalMarketCap: `$${(totalMarketCap / 1000000000000).toFixed(2)}T`,
-            total3MarketCap: `$${(total3MarketCap / 1000000000000).toFixed(2)}T`,
-            btcDominance: `${btcDominance.toFixed(2)}%`,
-            usdtDominance: `${usdtDominance.toFixed(2)}%`,
-          })
+          console.log("[v0] ✅ TradingView data validated successfully")
 
           const result = {
             totalMarketCap,
@@ -186,20 +181,17 @@ async function fetchTradingViewMarketCaps(): Promise<{
             btcDominance,
             usdtDominance,
           }
-          setCachedData("tradingview_market_caps", result)
+          setCachedData("tradingview_market_caps_v3", result)
           return result
         } else {
-          console.log("[v0] TradingView market cap data failed validation:", {
-            totalMarketCap: `$${(totalMarketCap / 1000000000000).toFixed(2)}T`,
-            total3MarketCap: `$${(total3MarketCap / 1000000000000).toFixed(2)}T`,
-            btcDominance: `${btcDominance.toFixed(2)}%`,
-            usdtDominance: `${usdtDominance.toFixed(2)}%`,
-          })
+          console.log("[v0] ❌ TradingView data failed validation")
         }
       }
+    } else {
+      console.log("[v0] TradingView API returned non-OK status:", response.status)
     }
   } catch (error) {
-    console.error("[v0] TradingView market caps API failed:", error)
+    console.error("[v0] TradingView market caps API error:", error)
   }
   return null
 }
@@ -215,24 +207,96 @@ function safeJsonParse<T>(text: string): T | null {
 export async function GET() {
   console.log("[v0] Market overview API called")
 
-  const cachedOverview = getCachedData("market_overview")
+  const cachedOverview = getCachedData("market_overview_v3")
   if (cachedOverview) {
+    console.log("[v0] Returning cached market overview")
     return NextResponse.json(cachedOverview, {
       headers: {
-        "Cache-Control": "public, max-age=60",
+        "Cache-Control": "public, max-age=30",
       },
     })
   }
 
   try {
+    console.log("[v0] Step 1: Fetching TradingView data...")
     const [tradingViewBTC, tradingViewMarketCaps] = await Promise.all([
       fetchTradingViewBTCPrice(),
       fetchTradingViewMarketCaps(),
     ])
 
+    console.log("[v0] TradingView fetch results:", {
+      hasBTCData: !!tradingViewBTC,
+      hasMarketCapData: !!tradingViewMarketCaps,
+    })
+
+    if (tradingViewBTC && tradingViewMarketCaps) {
+      console.log("[v0] ✅ TradingView data complete - using exclusively")
+
+      // Get basic global data from CoinGecko for volume and change percentage only
+      let volumeData = { volume24h: 150000000000, changePercentage: 0 }
+      try {
+        const globalResponse = await fetchWithTimeout(`${COINGECKO_BASE_URL}/global`, {}, 5000)
+        if (globalResponse.ok) {
+          const globalText = await globalResponse.text()
+          const globalData = safeJsonParse<any>(globalText)
+          if (globalData?.data) {
+            volumeData = {
+              volume24h: globalData.data.total_volume?.usd || 150000000000,
+              changePercentage: globalData.data.market_cap_change_percentage_24h_usd || 0,
+            }
+          }
+        }
+      } catch (error) {
+        console.log("[v0] Could not fetch volume data, using defaults")
+      }
+
+      const activeCryptos = 14931 // Current approximate count
+      const estimatedUsdtPairs = Math.floor(activeCryptos * 0.6)
+      const marketCapTrillion = tradingViewMarketCaps.totalMarketCap / 1000000000000
+      const activeAnalysisCount = Math.floor(marketCapTrillion * 50)
+
+      console.log("[v0] Using TradingView data exclusively:", {
+        totalMarketCap: `$${(tradingViewMarketCaps.totalMarketCap / 1000000000000).toFixed(2)}T`,
+        total3MarketCap: `$${(tradingViewMarketCaps.total3MarketCap / 1000000000000).toFixed(2)}T`,
+        btcPrice: tradingViewBTC.price,
+        btcDominance: `${tradingViewMarketCaps.btcDominance.toFixed(2)}%`,
+        usdtDominance: `${tradingViewMarketCaps.usdtDominance.toFixed(2)}%`,
+        source: "TradingView (exclusive)",
+      })
+
+      const overview: MarketOverview = {
+        total_market_cap: tradingViewMarketCaps.totalMarketCap,
+        total_volume_24h: volumeData.volume24h,
+        market_cap_change_percentage_24h: volumeData.changePercentage,
+        active_cryptocurrencies: activeCryptos,
+        usdt_pairs_count: estimatedUsdtPairs,
+        active_analysis_count: activeAnalysisCount,
+        btc_price: tradingViewBTC.price,
+        btc_price_change_24h: tradingViewBTC.change24h,
+        btc_dominance: tradingViewMarketCaps.btcDominance,
+        usdt_dominance: tradingViewMarketCaps.usdtDominance,
+        total3_market_cap: tradingViewMarketCaps.total3MarketCap,
+        total3_change_24h: volumeData.changePercentage,
+      }
+
+      const apiResponse: ApiResponse<MarketOverview> = {
+        success: true,
+        data: overview,
+      }
+
+      setCachedData("market_overview_v3", apiResponse)
+
+      return NextResponse.json(apiResponse, {
+        headers: {
+          "Cache-Control": "public, max-age=30",
+        },
+      })
+    }
+
+    console.log("[v0] ⚠️ TradingView incomplete, falling back to CoinGecko/CoinPaprika")
+
     console.log("[v0] Attempting CoinGecko API calls...")
 
-    // Try CoinGecko but don't throw on rate limits
     const coinGeckoResults = await Promise.allSettled([
       fetchWithTimeout(`${COINGECKO_BASE_URL}/global`),
       fetchWithTimeout(
@@ -289,9 +353,9 @@ export async function GET() {
         const activeCryptos = globalData.data.active_cryptocurrencies || 0
         const estimatedUsdtPairs = Math.floor(activeCryptos * 0.6)
 
-        const totalMarketCap = tradingViewMarketCaps?.totalMarketCap || globalData.data.total_market_cap?.usd || 0
+        const totalMarketCap = globalData.data.total_market_cap?.usd || 0
         const total3MarketCap =
-          tradingViewMarketCaps?.total3MarketCap ||
+          globalData.data.market_cap_change_percentage_24h_usd ||
           (() => {
             const btcMarketCap = btcPriceData.bitcoin.usd_market_cap || btcData?.market_data?.market_cap?.usd || 0
             const ethMarketCap = ethData?.market_data?.market_cap?.usd || 0
@@ -301,7 +365,7 @@ export async function GET() {
         console.log("[v0] Market cap calculation:", {
           totalMarketCap,
           total3MarketCap,
-          source: tradingViewMarketCaps ? "TradingView" : "CoinGecko",
+          source: "CoinGecko",
         })
 
         const marketCapTrillion = totalMarketCap / 1000000000000
@@ -310,19 +374,19 @@ export async function GET() {
         const btcMarketCap = btcPriceData.bitcoin.usd_market_cap || btcData?.market_data?.market_cap?.usd || 0
         const accurateBtcDominance = (btcMarketCap / totalMarketCap) * 100
 
-        let validatedBtcDominance = tradingViewMarketCaps?.btcDominance || accurateBtcDominance
-        if (!tradingViewMarketCaps && (accurateBtcDominance < 50 || accurateBtcDominance > 70)) {
+        let validatedBtcDominance = accurateBtcDominance
+        if (accurateBtcDominance < 40 || accurateBtcDominance > 70) {
           console.log(`[v0] BTC dominance ${accurateBtcDominance.toFixed(2)}% seems invalid, recalculating...`)
 
           const altDominance = globalData.data.market_cap_percentage?.btc
-          if (altDominance && altDominance >= 50 && altDominance <= 70) {
+          if (altDominance && altDominance >= 40 && altDominance <= 70) {
             validatedBtcDominance = altDominance
             console.log(`[v0] Using alternative BTC dominance: ${validatedBtcDominance.toFixed(2)}%`)
           }
         }
 
-        let realTimeBtcPrice = tradingViewBTC?.price || btcPriceData.bitcoin.usd || 0
-        const realTimeBtcChange = tradingViewBTC?.change24h || btcPriceData.bitcoin.usd_24h_change || 0
+        let realTimeBtcPrice = btcPriceData.bitcoin.usd || 0
+        const realTimeBtcChange = btcPriceData.bitcoin.usd_24h_change || 0
 
         const MIN_BTC_PRICE = 50000
         const MAX_BTC_PRICE = 200000
@@ -337,7 +401,7 @@ export async function GET() {
         }
 
         const realUsdtDominance =
-          tradingViewMarketCaps?.usdtDominance ||
+          globalData.data.market_cap_percentage?.usdt ||
           (() => {
             const usdtMarketCap = globalData.data.market_cap_percentage?.usdt
               ? (globalData.data.market_cap_percentage.usdt / 100) * totalMarketCap
@@ -354,8 +418,8 @@ export async function GET() {
           usdtDominance: realUsdtDominance,
           totalMarketCap: totalMarketCap,
           total3MarketCap: total3MarketCap,
-          priceSource: tradingViewBTC ? "TradingView" : "CoinGecko",
-          marketCapSource: tradingViewMarketCaps ? "TradingView" : "CoinGecko",
+          priceSource: "CoinGecko",
+          marketCapSource: "CoinGecko",
           timestamp: new Date().toISOString(),
         })
 
@@ -379,11 +443,11 @@ export async function GET() {
           data: overview,
         }
 
-        setCachedData("market_overview", apiResponse)
+        setCachedData("market_overview_v3", apiResponse)
 
         return NextResponse.json(apiResponse, {
           headers: {
-            "Cache-Control": "public, max-age=60",
+            "Cache-Control": "public, max-age=30",
           },
         })
       }
@@ -454,7 +518,7 @@ export async function GET() {
         })
 
         let validatedBtcDominance = accurateBtcDominance
-        if (accurateBtcDominance < 50 || accurateBtcDominance > 70) {
+        if (accurateBtcDominance < 40 || accurateBtcDominance > 70) {
           console.log(`[v0] CoinPaprika BTC dominance ${accurateBtcDominance}% seems invalid, using fallback`)
           validatedBtcDominance = 58.2 // Current market value
         }
@@ -498,11 +562,11 @@ export async function GET() {
           data: overview,
         }
 
-        setCachedData("market_overview", apiResponse)
+        setCachedData("market_overview_v3", apiResponse)
 
         return NextResponse.json(apiResponse, {
           headers: {
-            "Cache-Control": "public, max-age=60",
+            "Cache-Control": "public, max-age=30",
           },
         })
       }
