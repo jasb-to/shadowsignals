@@ -1020,11 +1020,13 @@ async function fetchCommodityPrice(
     // Map commodity symbols to Yahoo Finance symbols
     const commodityMap: Record<string, string> = {
       GOLD: "GC=F",
+      XAUUSD: "GC=F", // Gold futures
       SILVER: "SI=F",
+      XAGUSD: "SI=F", // Silver futures
       CRUDE: "CL=F",
       "CRUDE OIL": "CL=F",
       WTIUSD: "CL=F",
-      USOIL: "CL=F", // Added USOIL mapping
+      USOIL: "CL=F",
       OIL: "CL=F",
       "NATURAL GAS": "NG=F",
       GAS: "NG=F",
@@ -1032,7 +1034,9 @@ async function fetchCommodityPrice(
       WHEAT: "ZW=F",
       CORN: "ZC=F",
       PLATINUM: "PL=F",
+      XPTUSD: "PL=F", // Platinum futures
       PALLADIUM: "PA=F",
+      XPDUSD: "PA=F", // Palladium futures
     }
 
     const yahooSymbol = commodityMap[symbol.toUpperCase()] || symbol
@@ -1075,7 +1079,9 @@ async function fetchCommodityPrice(
 
     const fallbackPrices: Record<string, { price: number; change24h: number; marketCap: number; volume: number }> = {
       GOLD: { price: 3884, change24h: 1.2, marketCap: 3884000000000, volume: 50000000 },
+      XAUUSD: { price: 3884, change24h: 1.2, marketCap: 3884000000000, volume: 50000000 },
       SILVER: { price: 32.5, change24h: -0.8, marketCap: 32500000000, volume: 15000000 },
+      XAGUSD: { price: 32.5, change24h: -0.8, marketCap: 32500000000, volume: 15000000 },
       CRUDE: { price: 76.0, change24h: 0.5, marketCap: 76000000000, volume: 100000000 },
       "CRUDE OIL": { price: 76.0, change24h: 0.5, marketCap: 76000000000, volume: 100000000 },
       WTIUSD: { price: 76.0, change24h: 0.5, marketCap: 76000000000, volume: 100000000 },
@@ -1087,7 +1093,9 @@ async function fetchCommodityPrice(
       WHEAT: { price: 5.45, change24h: -0.5, marketCap: 5450000000, volume: 5000000 },
       CORN: { price: 4.85, change24h: 0.2, marketCap: 4850000000, volume: 6000000 },
       PLATINUM: { price: 1050, change24h: 0.8, marketCap: 1050000000, volume: 3000000 },
+      XPTUSD: { price: 1050, change24h: 0.8, marketCap: 1050000000, volume: 3000000 },
       PALLADIUM: { price: 1200, change24h: -0.4, marketCap: 1200000000, volume: 2000000 },
+      XPDUSD: { price: 1200, change24h: -0.4, marketCap: 1200000000, volume: 2000000 },
     }
 
     const fallback = fallbackPrices[symbol.toUpperCase()]
