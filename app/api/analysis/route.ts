@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { generateText } from "ai"
 import type { AnalysisResult, TradingSignal, TechnicalIndicators, CryptoToken, ApiResponse } from "@/lib/types"
 
 // AI-powered analysis engine
@@ -79,24 +78,47 @@ class AnalysisEngine {
     try {
       const prompt = `Analyze ${tokenSymbol} cryptocurrency trading at $${currentPrice}. Provide a brief technical analysis focusing on: 1) Current market sentiment, 2) Key price levels to watch, 3) Potential trading opportunities. Keep response under 100 words.`
 
-      console.log("[v0] Calling AI SDK for analysis...")
+      console.log("[v0] Calling Hugging Face API for analysis...")
 
-      const { text } = await generateText({
-        model: "openai/gpt-4o-mini", // Using GPT-4o-mini via Vercel AI Gateway
-        prompt,
-        maxTokens: 150,
-        temperature: 0.7,
+      const response = await fetch("https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          inputs: prompt,
+          parameters: {
+            max_new_tokens: 150,
+            temperature: 0.7,
+            top_p: 0.95,
+            return_full_text: false,
+          },
+        }),
+        signal: AbortSignal.timeout(30000), // 30 second timeout
       })
 
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error("[v0] Hugging Face API error:", response.status, errorText)
+        throw new Error(`Hugging Face API failed: ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log("[v0] Hugging Face API response:", data)
+
+      // Hugging Face returns an array with generated_text
+      const text = Array.isArray(data) ? data[0]?.generated_text : data?.generated_text
+
       if (text && text.trim().length > 0) {
-        console.log("[v0] AI SDK analysis generated successfully")
+        console.log("[v0] Hugging Face analysis generated successfully")
         return text.trim()
       }
 
-      console.log("[v0] AI SDK returned empty response, using fallback")
+      console.log("[v0] Hugging Face returned empty response, using fallback")
       return `AI analysis for ${tokenSymbol}: Market conditions suggest monitoring key levels for potential trading opportunities. Current price action at $${currentPrice} indicates ${currentPrice > 1000 ? "established asset" : "emerging opportunity"} with volatility-driven setups available.`
     } catch (error) {
-      console.error("[v0] AI SDK error:", error)
+      console.error("[v0] Hugging Face API error:", error)
       return `AI analysis for ${tokenSymbol}: Technical patterns suggest potential price movement based on current market conditions at $${currentPrice}. Current price action indicates ${currentPrice > 1000 ? "established asset with strong fundamentals" : "emerging opportunity with growth potential"} - monitor key support and resistance levels for optimal entry points.`
     }
   }

@@ -375,6 +375,41 @@ export function AdminDashboard() {
     }
   }
 
+  const handleRefreshCache = async () => {
+    try {
+      const response = await fetch("/api/admin/refresh-cache", { method: "POST" })
+      if (response.ok) {
+        console.log("[v0] Cache refreshed successfully")
+        await loadRealData()
+      }
+    } catch (error) {
+      console.error("[v0] Cache refresh failed:", error)
+    }
+  }
+
+  const handleBackupDatabase = async () => {
+    try {
+      const response = await fetch("/api/admin/backup-database", { method: "POST" })
+      if (response.ok) {
+        console.log("[v0] Database backup created successfully")
+      }
+    } catch (error) {
+      console.error("[v0] Database backup failed:", error)
+    }
+  }
+
+  const handleResetRateLimits = async () => {
+    try {
+      const response = await fetch("/api/admin/reset-rate-limits", { method: "POST" })
+      if (response.ok) {
+        console.log("[v0] Rate limits reset successfully")
+        await loadRealData()
+      }
+    } catch (error) {
+      console.error("[v0] Rate limit reset failed:", error)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -780,15 +815,15 @@ export function AdminDashboard() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <Button className="w-full bg-transparent" variant="outline" onClick={refreshApiStatus}>
+                  <Button className="w-full bg-transparent" variant="outline" onClick={handleRefreshCache}>
                     <RefreshCw className="h-4 w-4 mr-2" />
                     Refresh All Caches
                   </Button>
-                  <Button className="w-full bg-transparent" variant="outline">
+                  <Button className="w-full bg-transparent" variant="outline" onClick={handleBackupDatabase}>
                     <Database className="h-4 w-4 mr-2" />
                     Backup Token Database
                   </Button>
-                  <Button className="w-full bg-transparent" variant="outline">
+                  <Button className="w-full bg-transparent" variant="outline" onClick={handleResetRateLimits}>
                     <Zap className="h-4 w-4 mr-2" />
                     Reset API Rate Limits
                   </Button>
