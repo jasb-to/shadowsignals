@@ -1700,7 +1700,7 @@ const FuturisticDashboard = () => {
                             const response = await fetch("/api/analysis", {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
-                              body: JSON.JSON.stringify({
+                              body: JSON.stringify({
                                 symbol: result.symbol || result.name,
                                 market_type: activeTab,
                               }),
