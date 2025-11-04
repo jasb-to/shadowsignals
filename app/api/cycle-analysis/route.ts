@@ -243,13 +243,17 @@ export async function GET() {
     else if (daysSinceHalving < 700) cycle_phase = "distribution"
     else cycle_phase = "markdown"
 
+    // Bull market typically peaks around 18-24 months (540-730 days) after halving
+    // Current calculation shows 81% at ~600 days, which aligns with late bull market phase
     const bull_market_progress = Math.min(
       100,
       Math.max(
         0,
         (daysSinceHalving < 540
-          ? (daysSinceHalving / 540) * 85 // Max 85% until 18 months
-          : 85 + ((daysSinceHalving - 540) / 180) * 15) * params.bull_market_curve_adjustment, // Apply weekly adjustment
+          ? (daysSinceHalving / 540) * 75 // Max 75% until 18 months (early-mid bull)
+          : daysSinceHalving < 650
+            ? 75 + ((daysSinceHalving - 540) / 110) * 20 // 75-95% from 18-21.5 months (late bull)
+            : 95 + ((daysSinceHalving - 650) / 80) * 5) * params.bull_market_curve_adjustment, // 95-100% after 21.5 months (distribution/top)
       ),
     )
 
@@ -281,15 +285,35 @@ export async function GET() {
     const smoothedEthBtcRatio = Math.round(ethBtcRatio * 10000) / 10000 // Round to 4 decimals for stability
     const smoothedBtcDominance = Math.round(btcDominance * 100) / 100 // Round to 2 decimals
 
-    if (smoothedEthBtcRatio < params.altseason_thresholds.eth_btc_ratio_low) {
+    // Altseason typically progresses through distinct phases:
+    // 0-30%: BTC dominance (ETH/BTC < 0.035, BTC Dom > 60%)
+    // 30-60%: Rotation phase (ETH/BTC 0.035-0.055, BTC Dom 50-60%)
+    // 60-85%: Alt season (ETH/BTC 0.055-0.075, BTC Dom 45-50%)
+    // 85-100%: Peak alt season (ETH/BTC > 0.075, BTC Dom < 45%)
+
+    if (smoothedEthBtcRatio < 0.035) {
+      // BTC Season - Early phase
       altcoin_season_signal = "btc-season"
-      altseason_progress = Math.max(0, Math.min(25, ((smoothedEthBtcRatio - 0.025) / 0.007) * 25))
-    } else if (smoothedEthBtcRatio < 0.045) {
+      altseason_progress = Math.max(0, Math.min(30, ((smoothedEthBtcRatio - 0.025) / 0.01) * 30))
+    } else if (smoothedEthBtcRatio < 0.055) {
+      // Rotation Phase - Money flowing from BTC to alts
       altcoin_season_signal = "neutral"
-      altseason_progress = 25 + ((smoothedEthBtcRatio - params.altseason_thresholds.eth_btc_ratio_low) / 0.013) * 35
-    } else {
+      altseason_progress = 30 + ((smoothedEthBtcRatio - 0.035) / 0.02) * 30
+    } else if (smoothedEthBtcRatio < 0.075) {
+      // Alt Season - Strong alt performance
       altcoin_season_signal = "alt-season"
-      altseason_progress = Math.min(100, 60 + ((smoothedEthBtcRatio - 0.045) / 0.035) * 40)
+      altseason_progress = 60 + ((smoothedEthBtcRatio - 0.055) / 0.02) * 25
+    } else {
+      // Peak Alt Season - Euphoria phase
+      altcoin_season_signal = "alt-season"
+      altseason_progress = Math.min(100, 85 + ((smoothedEthBtcRatio - 0.075) / 0.025) * 15)
+    }
+
+    // Adjust based on BTC dominance for additional confirmation
+    if (smoothedBtcDominance > 60) {
+      altseason_progress = Math.max(0, altseason_progress - 10) // Reduce if BTC dominance is high
+    } else if (smoothedBtcDominance < 45) {
+      altseason_progress = Math.min(100, altseason_progress + 10) // Increase if BTC dominance is low
     }
 
     altseason_progress = Math.round(altseason_progress)

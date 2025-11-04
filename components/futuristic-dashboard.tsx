@@ -39,7 +39,10 @@ interface SearchResult {
 }
 
 interface AnalysisResult {
-  token: any
+  token?: {
+    current_price?: number
+    price_change_24h?: number
+  }
   signals: any[]
   technical_indicators: any
   trade_setup: any
@@ -179,23 +182,15 @@ const FuturisticDashboard = () => {
   const [metalsData, setMetalsData] = useState<any[]>([])
   const [metalsLoading, setMetalsLoading] = useState(false)
 
-  const [marketType, setMarketType] = useState<MarketType>("cryptocurrency")
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const [activeMarket, setActiveMarket] = useState<MarketType>("cryptocurrency")
   const [showScreener, setShowScreener] = useState(false)
   const [activeTab, setActiveTab] = useState<MarketType>("cryptocurrency")
   const [selectedTrade, setSelectedTrade] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState<string>("")
 
-  const [commoditiesData, setCommoditiesData] = useState<any[]>([])
-  const [forexData, setForexData] = useState<any[]>([])
-  const [commoditiesLoading, setCommoditiesLoading] = useState(false)
-  const [forexLoading, setForexLoading] = useState(false)
-
   // State for individual tab error messages to avoid duplicate disclaimers
   const [cryptoAnalysisError, setCryptoAnalysisError] = useState<string | null>(null)
-  const [commoditiesAnalysisError, setCommoditiesAnalysisError] = useState<string | null>(null)
-  const [forexAnalysisError, setForexAnalysisError] = useState<string | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false) // Added setIsRefreshing state
 
   const debounceSearch = useCallback(
     (() => {
@@ -366,37 +361,6 @@ const FuturisticDashboard = () => {
   }
 
   useEffect(() => {
-    if (activeTab === "commodities" && commoditiesData.length === 0) {
-      fetchCommoditiesData()
-    }
-  }, [activeTab])
-
-  useEffect(() => {
-    if (activeTab === "forex" && forexData.length === 0) {
-      fetchForexData()
-    }
-  }, [activeTab])
-
-  const fetchMetalsOverview = async () => {
-    try {
-      setMetalsLoading(true)
-      console.log("[v0] Fetching metals market overview...")
-
-      const response = await fetch("/api/metals?q=")
-      const data = await response.json()
-
-      if (data.success && data.data) {
-        console.log("[v0] Metals overview data received:", data.data.length, "metals")
-        setMetalsData(data.data.slice(0, 4)) // Top 4 metals for overview
-      }
-    } catch (error) {
-      console.error("[v0] Failed to fetch metals overview:", error)
-    } finally {
-      setMetalsLoading(false)
-    }
-  }
-
-  useEffect(() => {
     fetchMetalsOverview()
 
     // Refresh metals data every 5 minutes
@@ -514,9 +478,9 @@ const FuturisticDashboard = () => {
       if (activeTab === "cryptocurrency") {
         response = await fetch(`/api/v1/search?q=${encodeURIComponent(query)}`)
       } else if (activeTab === "commodities") {
-        response = await fetch(`/api/commodities?q=${encodeURIComponent(query)}`)
+        response = await fetch(`/api/commodities-search?q=${encodeURIComponent(query)}`)
       } else if (activeTab === "forex") {
-        response = await fetch(`/api/forex?q=${encodeURIComponent(query)}`)
+        response = await fetch(`/api/forex-search?q=${encodeURIComponent(query)}`)
       }
 
       if (response && response.ok) {
@@ -583,10 +547,16 @@ const FuturisticDashboard = () => {
     setErrorMessage("") // Clear general error message
 
     try {
-      const endpoint = "/api/analysis"
+      let endpoint = "/api/analysis"
       const requestBody = {
         symbol: searchQuery.trim(),
         market_type: activeTab,
+      }
+
+      if (activeTab === "commodities") {
+        endpoint = "/api/commodities-analysis"
+      } else if (activeTab === "forex") {
+        endpoint = "/api/forex-analysis"
       }
 
       console.log("[v0] Making POST request to:", endpoint)
@@ -633,9 +603,11 @@ const FuturisticDashboard = () => {
       if (activeTab === "cryptocurrency") {
         setCryptoAnalysisError(error.message || "Analysis failed. Please try again.")
       } else if (activeTab === "commodities") {
-        setCommoditiesAnalysisError(error.message || "Analysis failed. Please try again.")
-      } else {
-        setForexAnalysisError(error.message || "Analysis failed. Please try again.")
+        // You might want a separate error state for commodities if needed
+        setErrorMessage(error.message || "Commodity analysis failed. Please try again.")
+      } else if (activeTab === "forex") {
+        // You might want a separate error state for forex if needed
+        setErrorMessage(error.message || "Forex analysis failed. Please try again.")
       }
       setAnalysisData(null) // Ensure analysisData is null on error
     } finally {
@@ -646,11 +618,9 @@ const FuturisticDashboard = () => {
 
   const handleTabChange = (tab: MarketType) => {
     setActiveTab(tab)
-    // Clear analysis data and error messages when switching tabs
     setAnalysisData(null)
     setCryptoAnalysisError(null)
-    setCommoditiesAnalysisError(null)
-    setForexAnalysisError(null)
+    setErrorMessage("") // Clear general error message too
     setSearchQuery("") // Clear search query
     setSearchResults([])
     setShowDropdown(false)
@@ -711,8 +681,8 @@ const FuturisticDashboard = () => {
         console.log(`[v0] Processing signal ${index}:`, signal)
 
         if (signal.justification) {
-          const rsiMatch = signal.justification.match(/RSI[^(]*$$([0-9.]+)$$/i)
-          const stochMatch = signal.justification.match(/Stochastic RSI[^(]*$$([0-9.]+)$$/i)
+          const rsiMatch = signal.justification?.match(/RSI[^(]*$$([0-9.]+)$$/i)
+          const stochMatch = signal.justification?.match(/Stochastic RSI[^(]*$$([0-9.]+)$$/i)
 
           if (rsiMatch) {
             const rsiValue = Number.parseFloat(rsiMatch[1])
@@ -751,7 +721,8 @@ const FuturisticDashboard = () => {
     }
 
     if (analysisData.short_term_analysis?.key_levels) {
-      if (!shortTermRSI && analysisData.short_term_analysis.justification) {
+      if (!shortTermRSI && analysisData.short_term_analysis?.justification) {
+        // const rsiMatch = analysisData.short_term_analysis.justification?.match(/RSI[^(]*$$([0-9.]+)$$/i)
         const rsiMatch = analysisData.short_term_analysis.justification.match(/RSI[^(]*$$([0-9.]+)$$/i)
         if (rsiMatch) {
           shortTermRSI = Number.parseFloat(rsiMatch[1])
@@ -761,23 +732,13 @@ const FuturisticDashboard = () => {
     }
 
     if (analysisData.long_term_analysis?.key_levels) {
-      if (!mediumTermRSI && analysisData.long_term_analysis.justification) {
+      if (!mediumTermRSI && analysisData.long_term_analysis?.justification) {
+        // const rsiMatch = analysisData.long_term_analysis.justification?.match(/RSI[^(]*$$([0-9.]+)$$/i)
         const rsiMatch = analysisData.long_term_analysis.justification.match(/RSI[^(]*$$([0-9.]+)$$/i)
         if (rsiMatch) {
           mediumTermRSI = Number.parseFloat(rsiMatch[1])
           console.log("[v0] Found long term RSI:", mediumTermRSI)
         }
-      }
-    }
-
-    if (!shortTermRSI || !mediumTermRSI) {
-      const screenerToken = screenerData?.top_opportunities?.find(
-        (token: any) => token.symbol.toLowerCase() === searchQuery.toLowerCase(),
-      )
-      if (screenerToken?.rsi) {
-        if (!shortTermRSI) shortTermRSI = screenerToken.rsi
-        if (!mediumTermRSI) mediumTermRSI = screenerToken.rsi * 0.95 // Slightly different for medium term
-        console.log("[v0] Using screener RSI data:", screenerToken.rsi)
       }
     }
 
@@ -834,7 +795,19 @@ const FuturisticDashboard = () => {
     setShowDropdown(false)
 
     try {
-      const response = await fetch(`/api/analysis?symbol=${encodeURIComponent(token.symbol)}`)
+      // Determine the correct API endpoint based on activeTab
+      let endpoint: string
+      if (activeTab === "cryptocurrency") {
+        endpoint = `/api/analysis?symbol=${encodeURIComponent(token.symbol)}`
+      } else if (activeTab === "commodities") {
+        endpoint = `/api/commodities-analysis?symbol=${encodeURIComponent(token.symbol)}`
+      } else if (activeTab === "forex") {
+        endpoint = `/api/forex-analysis?symbol=${encodeURIComponent(token.symbol)}`
+      } else {
+        throw new Error("Invalid active tab")
+      }
+
+      const response = await fetch(endpoint)
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
@@ -873,237 +846,22 @@ const FuturisticDashboard = () => {
     }
   }
 
-  const fetchCommoditiesData = async () => {
-    setCommoditiesLoading(true)
+  const fetchMetalsOverview = async () => {
     try {
-      const response = await fetch("/api/commodities")
-      const result = await response.json()
-      if (result.success && result.data) {
-        // Transform API data to match UI format
-        const transformedData = result.data.map((item: any) => ({
-          symbol: item.symbol,
-          name: item.name,
-          price: Number.parseFloat(item.price),
-          change: Number.parseFloat(item.change),
-          type: item.symbol.includes("XAU") || item.symbol.includes("XAG") ? "Precious Metal" : "Energy",
-          volume: "Medium",
-          trend: item.sentiment,
-        }))
-        setCommoditiesData(transformedData)
-      }
-    } catch (error) {
-      console.error("Failed to fetch commodities data:", error)
-    } finally {
-      setCommoditiesLoading(false)
-    }
-  }
+      setMetalsLoading(true)
+      console.log("[v0] Fetching metals market overview...")
 
-  const fetchForexData = async () => {
-    setForexLoading(true)
-    try {
-      const response = await fetch("/api/forex")
-      const result = await response.json()
-      if (result.success && result.data) {
-        // Transform API data to match UI format
-        const transformedData = result.data.map((item: any) => ({
-          symbol: item.symbol,
-          name: item.name,
-          price: Number.parseFloat(item.price),
-          change: Number.parseFloat(item.change),
-          type: "Major",
-          volume: "High",
-          trend: item.sentiment,
-        }))
-        setForexData(transformedData)
-      }
-    } catch (error) {
-      console.error("Failed to fetch forex data:", error)
-    } finally {
-      setForexLoading(false)
-    }
-  }
-
-  const commoditiesDataList =
-    commoditiesData.length > 0
-      ? commoditiesData
-      : [
-          {
-            symbol: "XAUUSD",
-            name: "Gold",
-            price: 2650.45,
-            change: 1.2,
-            type: "Precious Metal",
-            volume: "High",
-            trend: "Bullish",
-          },
-          {
-            symbol: "XAGUSD",
-            name: "Silver",
-            price: 31.85,
-            change: -0.8,
-            type: "Precious Metal",
-            volume: "Medium",
-            trend: "Bearish",
-          },
-          {
-            symbol: "WTIUSD",
-            name: "Crude Oil WTI",
-            price: 68.75,
-            change: 2.1,
-            type: "Energy",
-            volume: "High",
-            trend: "Bullish",
-          },
-          {
-            symbol: "XPTUSD",
-            name: "Platinum",
-            price: 985.2,
-            change: 0.5,
-            type: "Precious Metal",
-            volume: "Low",
-            trend: "Neutral",
-          },
-          {
-            symbol: "XPDUSD",
-            name: "Palladium",
-            price: 1045.3,
-            change: -1.2,
-            type: "Precious Metal",
-            volume: "Low",
-            trend: "Bearish",
-          },
-          {
-            symbol: "NATGAS",
-            name: "Natural Gas",
-            price: 2.85,
-            change: 3.4,
-            type: "Energy",
-            volume: "Medium",
-            trend: "Bullish",
-          },
-        ]
-
-  const forexDataList =
-    forexData.length > 0
-      ? forexData
-      : [
-          {
-            symbol: "EURUSD",
-            name: "Euro / US Dollar",
-            price: 1.0845,
-            change: 0.15,
-            type: "Major",
-            volume: "Very High",
-            trend: "Bullish",
-          },
-          {
-            symbol: "GBPUSD",
-            name: "British Pound / US Dollar",
-            price: 1.2675,
-            change: -0.25,
-            type: "Major",
-            volume: "High",
-            trend: "Bearish",
-          },
-          {
-            symbol: "USDJPY",
-            name: "US Dollar / Japanese Yen",
-            price: 149.85,
-            change: 0.45,
-            type: "Major",
-            volume: "High",
-            trend: "Bullish",
-          },
-          {
-            symbol: "AUDUSD",
-            name: "Australian Dollar / US Dollar",
-            price: 0.6785,
-            change: 0.35,
-            type: "Major",
-            volume: "Medium",
-            trend: "Bullish",
-          },
-          {
-            symbol: "USDCAD",
-            name: "US Dollar / Canadian Dollar",
-            price: 1.3545,
-            change: -0.15,
-            type: "Major",
-            volume: "Medium",
-            trend: "Bearish",
-          },
-          {
-            symbol: "USDCHF",
-            name: "US Dollar / Swiss Franc",
-            price: 0.8875,
-            change: 0.25,
-            type: "Major",
-            volume: "Medium",
-            trend: "Bullish",
-          },
-        ]
-
-  const commoditiesMarketData = [
-    { title: "Gold Sentiment", value: "82%", status: "Bullish", description: "Strong institutional demand" },
-    { title: "Oil Inventory", value: "-2.1M", status: "Bullish", description: "Weekly drawdown continues" },
-    { title: "DXY Impact", value: "101.45", status: "Bearish", description: "Strong dollar pressure" },
-    { title: "Inflation Hedge", value: "Active", status: "Bullish", description: "Rising inflation expectations" },
-    { title: "Supply Chain", value: "Tight", status: "Bullish", description: "Limited supply availability" },
-    { title: "Seasonal Trends", value: "Positive", status: "Bullish", description: "Q4 seasonal strength" },
-  ]
-
-  const forexMarketData = [
-    { title: "USD Strength", value: "101.45", status: "Strong", description: "Fed hawkish stance" },
-    { title: "EUR Outlook", value: "Weak", status: "Bearish", description: "ECB dovish signals" },
-    { title: "JPY Intervention", value: "150 Level", status: "Risk", description: "BoJ intervention zone" },
-    { title: "Risk Sentiment", value: "Risk-On", status: "Bullish", description: "Equity markets strong" },
-    { title: "Carry Trades", value: "Active", status: "Bullish", description: "High yield currencies favored" },
-    { title: "Central Bank", value: "Divergence", status: "Volatile", description: "Policy differences driving moves" },
-  ]
-
-  const handleTradeClick = async (token: any) => {
-    setIsAnalyzing(true)
-    setAnalysisData(null)
-    setShowDropdown(false)
-
-    try {
-      const response = await fetch(`/api/analysis?symbol=${encodeURIComponent(token.symbol)}`)
-
-      // Check if response is ok and content type is JSON
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const contentType = response.headers.get("content-type")
-      if (!contentType || !contentType.includes("application/json")) {
-        const text = await response.text()
-        console.error("[v0] Non-JSON response received:", text.substring(0, 200))
-        throw new Error("Server returned non-JSON response")
-      }
-
+      const response = await fetch("/api/metals?q=")
       const data = await response.json()
 
-      console.log("[v0] Analysis data received:", data)
-
-      if (data.success) {
-        const processedData = processAnalysisData(data)
-        setAnalysisData(processedData)
-        console.log("[v0] Processed analysis data:", processedData)
-      } else {
-        console.error("[v0] Analysis failed:", data.error)
-        setAnalysisData({
-          error: data.error || "Analysis failed. Please try again.",
-          symbol: token.symbol,
-        })
+      if (data.success && data.data) {
+        console.log("[v0] Metals overview data received:", data.data.length, "metals")
+        setMetalsData(data.data.slice(0, 4)) // Top 4 metals for overview
       }
     } catch (error) {
-      console.error("[v0] Analysis error:", error)
-      setAnalysisData({
-        error: "Analysis failed. Please try again.",
-        symbol: token.symbol,
-      })
+      console.error("[v0] Failed to fetch metals overview:", error)
     } finally {
-      setIsAnalyzing(false)
+      setMetalsLoading(false)
     }
   }
 
@@ -1264,11 +1022,13 @@ const FuturisticDashboard = () => {
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div className="bg-green-900/30 border border-green-500/30 rounded-lg p-3">
                 <div className="text-green-400 text-sm mb-1">Support</div>
-                <div className="text-white font-bold">${shortTermAnalysis.key_levels.support.toFixed(2)}</div>
+                <div className="text-white font-bold">${(shortTermAnalysis.key_levels?.support ?? 0).toFixed(2)}</div>
               </div>
               <div className="bg-red-900/30 border border-red-500/30 rounded-lg p-3">
                 <div className="text-red-400 text-sm mb-1">Resistance</div>
-                <div className="text-white font-bold">${shortTermAnalysis.key_levels.resistance.toFixed(2)}</div>
+                <div className="text-white font-bold">
+                  ${(shortTermAnalysis.key_levels?.resistance ?? 0).toFixed(2)}
+                </div>
               </div>
             </div>
 
@@ -1352,11 +1112,11 @@ const FuturisticDashboard = () => {
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div className="bg-green-900/30 border border-green-500/30 rounded-lg p-3">
                 <div className="text-green-400 text-sm mb-1">Support</div>
-                <div className="text-white font-bold">${longTermAnalysis.key_levels.support.toFixed(2)}</div>
+                <div className="text-white font-bold">${(longTermAnalysis.key_levels?.support ?? 0).toFixed(2)}</div>
               </div>
               <div className="bg-red-900/30 border border-red-500/30 rounded-lg p-3">
                 <div className="text-red-400 text-sm mb-1">Resistance</div>
-                <div className="text-white font-bold">${longTermAnalysis.key_levels.resistance.toFixed(2)}</div>
+                <div className="text-white font-bold">${(longTermAnalysis.key_levels?.resistance ?? 0).toFixed(2)}</div>
               </div>
             </div>
 
@@ -1416,15 +1176,15 @@ const FuturisticDashboard = () => {
           <div className="flex justify-between items-center">
             <div>
               <div className="text-gray-400 text-sm mb-1">Current Price</div>
-              <div className="text-4xl font-bold text-cyan-400">${analysis.token.current_price.toFixed(2)}</div>
+              <div className="text-4xl font-bold text-cyan-400">${(analysis.token?.current_price ?? 0).toFixed(2)}</div>
             </div>
             <div className="text-right">
               <div className="text-gray-400 text-sm mb-1">24h Change</div>
               <div
-                className={`text-2xl font-bold ${analysis.token.price_change_percentage_24h >= 0 ? "text-green-400" : "text-red-400"}`}
+                className={`text-2xl font-bold ${(analysis.token?.price_change_24h ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}
               >
-                {analysis.token.price_change_percentage_24h >= 0 ? "+" : ""}
-                {analysis.token.price_change_percentage_24h.toFixed(2)}%
+                {(analysis.token?.price_change_24h ?? 0) >= 0 ? "+" : ""}
+                {(analysis.token?.price_change_24h ?? 0).toFixed(2)}%
               </div>
             </div>
           </div>
@@ -1525,7 +1285,9 @@ const FuturisticDashboard = () => {
                 <div className="w-2 h-2 bg-green-400 rounded-full" />
                 <span className="text-green-300 font-medium">Support</span>
               </div>
-              <div className="text-white font-bold text-2xl">${technicalIndicators.support_levels[0].toFixed(2)}</div>
+              <div className="text-white font-bold text-2xl">
+                ${(technicalIndicators.support_levels?.[0] ?? 0).toFixed(2)}
+              </div>
             </div>
 
             <div className="bg-red-900/30 rounded-lg p-4 border border-red-500/30">
@@ -1534,7 +1296,7 @@ const FuturisticDashboard = () => {
                 <span className="text-red-300 font-medium">Resistance</span>
               </div>
               <div className="text-white font-bold text-2xl">
-                ${technicalIndicators.resistance_levels[0].toFixed(2)}
+                ${(technicalIndicators.resistance_levels?.[0] ?? 0).toFixed(2)}
               </div>
             </div>
           </div>
@@ -1561,11 +1323,11 @@ const FuturisticDashboard = () => {
                 <div className="space-y-2">
                   <div className="flex justify-between bg-slate-800/50 p-2 rounded">
                     <span className="text-orange-200">Min Entry</span>
-                    <span className="text-white font-mono">${tradeSetup.entry_zone.min.toFixed(4)}</span>
+                    <span className="text-white font-mono">${(tradeSetup.entry_zone?.min ?? 0).toFixed(4)}</span>
                   </div>
                   <div className="flex justify-between bg-slate-800/50 p-2 rounded">
                     <span className="text-orange-200">Max Entry</span>
-                    <span className="text-white font-mono">${tradeSetup.entry_zone.max.toFixed(4)}</span>
+                    <span className="text-white font-mono">${(tradeSetup.entry_zone?.max ?? 0).toFixed(4)}</span>
                   </div>
                 </div>
               </div>
@@ -1573,15 +1335,15 @@ const FuturisticDashboard = () => {
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-red-900/30 rounded p-3 border border-red-500/30">
                   <div className="text-xs text-red-300 mb-1">Stop Loss</div>
-                  <div className="text-white font-mono text-sm">${tradeSetup.stop_loss.toFixed(2)}</div>
+                  <div className="text-white font-mono text-sm">${(tradeSetup.stop_loss ?? 0).toFixed(2)}</div>
                 </div>
                 <div className="bg-green-900/30 rounded p-3 border border-green-500/30">
                   <div className="text-xs text-green-300 mb-1">Take Profit 1 (10%)</div>
-                  <div className="text-white font-mono text-sm">${tradeSetup.take_profit_1.toFixed(2)}</div>
+                  <div className="text-white font-mono text-sm">${(tradeSetup.take_profit_1 ?? 0).toFixed(2)}</div>
                 </div>
                 <div className="bg-green-900/30 rounded p-3 border border-green-500/30">
                   <div className="text-xs text-green-300 mb-1">Take Profit 2</div>
-                  <div className="text-white font-mono text-sm">${tradeSetup.take_profit_2.toFixed(2)}</div>
+                  <div className="text-white font-mono text-sm">${(tradeSetup.take_profit_2 ?? 0).toFixed(2)}</div>
                 </div>
               </div>
             </div>
@@ -1672,7 +1434,7 @@ const FuturisticDashboard = () => {
     if (confluenceScore >= 80) {
       return `The ${confluenceScore}% confluence score indicates exceptionally strong ${trend === "trending_up" ? "bullish" : trend === "trending_down" ? "bearish" : "neutral"} alignment across multiple timeframes. Current market structure shows ${description.toLowerCase()} conditions with RSI values indicating ${trend === "trending_up" ? "sustained momentum without being overbought" : trend === "trending_down" ? "oversold conditions presenting potential reversal opportunities" : "balanced momentum suggesting consolidation"}. Support and resistance levels are ${trend === "trending_up" ? "holding firm with strong buying interest" : trend === "trending_down" ? "being tested with selling pressure" : "defining clear range boundaries"}. Volume analysis confirms ${trend === "trending_up" ? "institutional accumulation" : trend === "trending_down" ? "distribution patterns" : "balanced participation"}. The combination of technical indicators suggests ${trend === "trending_up" ? "highly favorable risk-reward conditions for long positions" : trend === "trending_down" ? "caution with potential short opportunities" : "patience until clearer directional bias emerges"}. Consider ${trend === "trending_up" ? "scaling into positions on any minor pullbacks" : trend === "trending_down" ? "waiting for oversold bounces or trend reversal signals" : "range trading strategies with tight risk management"}.`
     } else if (confluenceScore >= 60) {
-      return `The ${confluenceScore}% confluence score indicates solid ${trend === "trending_up" ? "bullish" : trend === "trending_down" ? "bearish" : "mixed"} alignment with ${description.toLowerCase()} market structure. RSI levels show ${trend === "trending_up" ? "healthy momentum with room for further upside" : trend === "trending_down" ? "declining momentum but not yet oversold" : "neutral momentum suggesting indecision"}. Support levels are ${trend === "trending_up" ? "providing strong foundation for continued advance" : trend === "trending_down" ? "under pressure but still intact" : "acting as reliable bounce zones"}. Volume patterns indicate ${trend === "trending_up" ? "growing institutional interest" : trend === "trending_down" ? "moderate selling pressure" : "balanced market participation"}. Technical indicators suggest ${trend === "trending_up" ? "favorable conditions for position building" : trend === "trending_down" ? "defensive positioning with selective opportunities" : "neutral stance with range-bound expectations"}. Strategy should focus on ${trend === "trending_up" ? "buying strength with proper risk management" : trend === "trending_down" ? "capital preservation and selective short-term trades" : "range trading with clear entry and exit levels"}.`
+      return `The ${confluenceScore}% confluence score indicates solid ${trend === "trending_up" ? "bullish" : trend === "trending_down" ? "bearish" : "mixed"} alignment with ${description.toLowerCase()} market structure. RSI levels show ${trend === "trending_up" ? "healthy momentum with room for further upside" : trend === "trending_down" ? "declining momentum but not yet oversold" : "neutral readings suggesting indecision"}. Support levels are ${trend === "trending_up" ? "providing strong foundation for continued advance" : trend === "trending_down" ? "under pressure but still intact" : "acting as reliable bounce zones"}. Volume patterns indicate ${trend === "trending_up" ? "growing institutional interest" : trend === "trending_down" ? "moderate selling pressure" : "balanced market participation"}. Technical indicators suggest ${trend === "trending_up" ? "favorable conditions for position building" : trend === "trending_down" ? "defensive positioning with selective opportunities" : "neutral stance with range-bound expectations"}. Strategy should focus on ${trend === "trending_up" ? "buying strength with proper risk management" : trend === "trending_down" ? "capital preservation and selective short-term trades" : "range trading with clear entry and exit levels"}.`
     } else if (confluenceScore >= 40) {
       return `The ${confluenceScore}% confluence score indicates mixed signals with ${description.toLowerCase()} market conditions creating uncertainty. RSI values show ${trend === "trending_up" ? "emerging bullish momentum but lacking conviction" : trend === "trending_down" ? "weakening momentum with potential stabilization" : "neutral readings suggesting market indecision"}. Support and resistance levels are ${trend === "trending_up" ? "being tested with moderate buying interest" : trend === "trending_down" ? "holding but showing signs of weakness" : "clearly defined and respected by price action"}. Volume analysis reveals ${trend === "trending_up" ? "inconsistent participation limiting upside potential" : trend === "trending_down" ? "declining selling pressure suggesting exhaustion" : "low conviction trading with minimal institutional flow"}. The technical setup suggests ${trend === "trending_up" ? "cautious optimism with reduced position sizing" : trend === "trending_down" ? "potential bottoming process requiring patience" : "sideways consolidation with range-bound opportunities"}. Recommended approach includes ${trend === "trending_up" ? "small position sizes with tight stops until momentum confirms" : trend === "trending_down" ? "waiting for clearer reversal signals before committing capital" : "range trading strategies with disciplined risk management"}.`
     } else {
@@ -1682,106 +1444,6 @@ const FuturisticDashboard = () => {
 
   const getTabBackgroundClass = () => {
     return "bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900"
-  }
-
-  const handleCommodityAnalyze = async (symbol: string) => {
-    setSearchQuery(symbol)
-    setActiveTab("commodities")
-    setCommoditiesAnalysisError(null) // Clear commodity error on tab switch
-    setAnalysisData(null) // Clear general analysis data
-    setShowDropdown(false) // Close dropdown
-
-    // Attempt to fetch commodity data if not already loaded
-    if (commoditiesData.length === 0) {
-      await fetchCommoditiesData()
-    }
-
-    // Perform search to populate searchResults for the dropdown or to confirm symbol
-    await searchTokens(symbol) // Use searchTokens to ensure it's done for the correct tab
-
-    // Manually trigger analysis if search result is found or symbol is known
-    if (symbol) {
-      setIsAnalyzing(true)
-      setAnalysisData(null)
-      setCommoditiesAnalysisError(null)
-
-      try {
-        const response = await fetch("/api/analysis", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ symbol: symbol, market_type: "commodities" }),
-        })
-
-        const contentType = response.headers.get("content-type")
-        if (!contentType || !contentType.includes("application/json")) {
-          throw new Error("Server returned non-JSON response")
-        }
-
-        const data = await response.json()
-        if (data.success) {
-          const processedData = processAnalysisData(data)
-          setAnalysisData(processedData)
-        } else {
-          throw new Error(data.error || "Commodity analysis failed")
-        }
-      } catch (error: any) {
-        console.error("[v0] Commodity analysis error:", error)
-        setCommoditiesAnalysisError(error.message || "Commodity analysis failed. Please try again.")
-        setAnalysisData(null)
-      } finally {
-        setIsAnalyzing(false)
-      }
-    }
-  }
-
-  const handleForexAnalyze = async (symbol: string) => {
-    setSearchQuery(symbol)
-    setActiveTab("forex")
-    setForexAnalysisError(null) // Clear forex error on tab switch
-    setAnalysisData(null) // Clear general analysis data
-    setShowDropdown(false) // Close dropdown
-
-    // Attempt to fetch forex data if not already loaded
-    if (forexData.length === 0) {
-      await fetchForexData()
-    }
-
-    // Perform search to populate searchResults for the dropdown or to confirm symbol
-    await searchTokens(symbol) // Use searchTokens to ensure it's done for the correct tab
-
-    // Manually trigger analysis if search result is found or symbol is known
-    if (symbol) {
-      setIsAnalyzing(true)
-      setAnalysisData(null)
-      setForexAnalysisError(null)
-
-      try {
-        const response = await fetch("/api/analysis", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ symbol: symbol, market_type: "forex" }),
-        })
-
-        const contentType = response.headers.get("content-type")
-        if (!contentType || !contentType.includes("application/json")) {
-          throw new Error("Server returned non-JSON response")
-        }
-
-        const data = await response.json()
-        if (data.success) {
-          const processedData = processAnalysisData(data)
-          setAnalysisData(processedData)
-        } else {
-          throw new Error(data.error || "Forex analysis failed")
-        }
-      } catch (error: any) {
-        console.error("[v0] Forex analysis error:", error)
-        setForexAnalysisError(error.message || "Forex analysis failed. Please try again.")
-        setAnalysisData(null)
-      } finally {
-        setIsAnalyzing(false)
-      }
-    }
   }
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -1797,720 +1459,332 @@ const FuturisticDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
-      <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 text-white p-8">
+      <div className="max-w-[1800px] mx-auto">
         {/* Header */}
-        <div className="text-center mb-12">
-          <div className="flex items-center justify-center gap-6 mb-4">
-            <div className="relative">
-              <img
-                src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Screenshot%202025-09-15%20at%2020.55.23-IcVTQNAhIbKSz8niIkNIeDQlpppYGF.png"
-                alt="Shadow Signals Logo"
-                className="w-16 h-16 rounded-full shadow-2xl ring-4 ring-blue-500/30 hover:ring-blue-400/50 transition-all duration-300"
-              />
-              <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-blue-500/20 to-purple-600/20 animate-pulse"></div>
-            </div>
-            <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-400 via-purple-500 to-cyan-400 bg-clip-text text-transparent">
-              Shadow Signals
-            </h1>
-          </div>
-          <div className="text-gray-300 space-y-2 max-w-2xl mx-auto">
-            <p className="text-xl font-medium">Advanced AI-Powered Market Analysis</p>
-            <p className="text-lg">Real-time cryptocurrency, commodities & forex signals with confluence scoring</p>
-            <p className="text-base">Professional-grade technical analysis powered by machine learning algorithms</p>
-            <p className="text-sm text-gray-400 mt-4">
-              Empowering traders with data-driven insights and precision market timing
+        <div className="mb-8">
+          <h1 className="text-5xl font-bold mb-2 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+            Shadow Signals
+          </h1>
+          <p className="text-gray-400 text-lg mb-3">AI-Powered Crypto Trading Analysis</p>
+          <div className="text-gray-300 text-sm space-y-1 max-w-3xl">
+            <p>Real-time cryptocurrency market analysis powered by advanced AI algorithms.</p>
+            <p>
+              Track whale movements, monitor smart money flows, and receive actionable trading signals with
+              comprehensive technical analysis.
             </p>
           </div>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="mb-8">
-          <div className="flex gap-4 justify-center">
-            {["cryptocurrency", "commodities", "forex"].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => handleTabChange(tab as MarketType)}
-                className={`px-6 py-3 rounded-lg font-medium transition-all ${
-                  activeTab === tab
-                    ? "bg-blue-600 text-white shadow-lg"
-                    : "text-gray-300 hover:text-white hover:bg-gray-700/50"
-                }`}
+        {/* Tab Navigation removed - commodities and forex tabs hidden */}
+
+        {/* Main Market Data Cards - Cryptocurrency only */}
+        <div className="space-y-8">
+          {/* Main Market Data Cards - 2x6 Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {/* Total Market Cap */}
+            <div className="bg-gray-800/50 border border-green-500/20 rounded-xl p-4 hover:bg-green-900/10 hover:border-green-400/40 transition-all duration-300 group">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-400 group-hover:text-green-300 transition-colors">
+                  Total Market Cap
+                </h3>
+                <div className="text-green-400">$</div>
+              </div>
+              <div className="text-2xl font-bold text-white group-hover:text-green-100 transition-colors">
+                {marketData?.total_market_cap ? formatNumber(marketData.total_market_cap) : "$4.12T"}
+              </div>
+              <div
+                className={`text-sm ${marketData?.market_cap_change_percentage_24h && marketData.market_cap_change_percentage_24h >= 0 ? "text-green-400" : "text-red-400"}`}
               >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {marketData?.market_cap_change_percentage_24h
+                  ? `${marketData.market_cap_change_percentage_24h >= 0 ? "+" : ""}${marketData.market_cap_change_percentage_24h.toFixed(2)}% 24h`
+                  : "-0.38% 24h"}
+              </div>
+            </div>
+
+            {/* 24h Volume */}
+            <div className="bg-gray-800/50 border border-blue-500/20 rounded-xl p-4 hover:bg-blue-900/10 hover:border-blue-400/40 transition-all duration-300 group">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-400 group-hover:text-blue-300 transition-colors">
+                  24h Volume
+                </h3>
+                <div className="text-blue-400">📊</div>
+              </div>
+              <div className="text-2xl font-bold text-white group-hover:text-blue-100 transition-colors">
+                {marketData?.total_volume_24h ? formatNumber(marketData.total_volume_24h) : "$153.7B"}
+              </div>
+              <div className="text-sm text-gray-400">Volume</div>
+            </div>
+
+            {/* BTC Price */}
+            <div className="bg-gray-800/50 border border-orange-500/20 rounded-xl p-4 hover:bg-orange-900/10 hover:border-orange-400/40 transition-all duration-300 group">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-400 group-hover:text-orange-300 transition-colors">
+                  BTC Price
+                </h3>
+                <div className="text-orange-400">₿</div>
+              </div>
+              <div className="text-2xl font-bold text-white group-hover:text-orange-100 transition-colors">
+                {marketData?.btc_price ? formatBTCPrice(marketData.btc_price) : "$115,578"}
+              </div>
+              <div
+                className={`text-sm ${marketData?.btc_price_change_24h && marketData.btc_price_change_24h >= 0 ? "text-green-400" : "text-red-400"}`}
+              >
+                {marketData?.btc_price_change_24h
+                  ? `${marketData.btc_price_change_24h >= 0 ? "+" : ""}${marketData.btc_price_change_24h.toFixed(2)}% 24h`
+                  : "-0.15% 24h"}
+              </div>
+            </div>
+
+            {/* BTC Dominance */}
+            <div className="bg-gray-800/50 border border-yellow-500/20 rounded-xl p-4 hover:bg-yellow-900/10 hover:border-yellow-400/40 transition-all duration-300 group">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-400 group-hover:text-yellow-300 transition-colors">
+                  BTC Dominance
+                </h3>
+                <div className="text-yellow-400">⚡</div>
+              </div>
+              <div className="text-2xl font-bold text-white group-hover:text-yellow-100 transition-colors">
+                {marketData?.btc_dominance ? `${marketData.btc_dominance.toFixed(1)}%` : "58.1%"}
+              </div>
+              <div className="text-sm text-gray-400">Market Share</div>
+            </div>
+
+            {/* USDT Dominance */}
+            <div className="bg-gray-800/50 border border-cyan-500/20 rounded-xl p-4 hover:bg-cyan-900/10 hover:border-cyan-400/40 transition-all duration-300 group">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-400 group-hover:text-cyan-300 transition-colors">
+                  USDT Dominance
+                </h3>
+                <div className="text-cyan-400">💰</div>
+              </div>
+              <div className="text-2xl font-bold text-white group-hover:text-cyan-100 transition-colors">
+                {marketData?.usdt_dominance ? `${marketData.usdt_dominance.toFixed(1)}%` : "4.5%"}
+              </div>
+              <div className="text-sm text-gray-400">Stablecoin Share</div>
+            </div>
+
+            {/* Total3 Market Cap */}
+            <div className="bg-gray-800/50 border border-purple-500/20 rounded-xl p-4 hover:bg-purple-900/10 hover:border-purple-400/40 transition-all duration-300 group">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-400 group-hover:text-purple-300 transition-colors">
+                  Total3 Market Cap
+                </h3>
+                <div className="text-purple-400">📈</div>
+              </div>
+              <div className="text-2xl font-bold text-white group-hover:text-purple-100 transition-colors">
+                {marketData?.total3_market_cap ? formatNumber(marketData.total3_market_cap) : "$1.1T"}
+              </div>
+              <div
+                className={`text-sm ${marketData?.total3_change_24h && marketData.total3_change_24h >= 0 ? "text-green-400" : "text-red-400"}`}
+              >
+                {marketData?.total3_change_24h
+                  ? `${marketData.total3_change_24h >= 0 ? "+" : ""}${marketData.total3_change_24h.toFixed(2)}% 24h`
+                  : "-0.38% 24h"}
+              </div>
+            </div>
+          </div>
+
+          {/* Bull Market Top and Altseason Analysis Cards */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Bull Market Top */}
+            <div className="bg-gradient-to-br from-purple-900/20 to-purple-800/10 border border-purple-500/30 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-base font-semibold text-white">Bull Market Top</h3>
+                <div className="text-purple-400">📈</div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-300">Progress:</span>
+                  <span className="text-xl font-bold text-purple-400">{cycleData?.bull_market_progress || 81}%</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-300">Est. Top:</span>
+                  <span className="text-sm text-white font-medium">
+                    {cycleData?.predicted_top_date || "Jan 9, 2026"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-300">Confluence:</span>
+                  <span className="text-lg font-bold text-purple-400">
+                    {cycleData?.bull_top_confluence_score || 47}%
+                  </span>
+                </div>
+                <div className="mt-2 pt-2 border-t border-purple-500/20">
+                  <p className="text-[10px] text-purple-300 leading-tight">
+                    Based on: Pi Cycle, MVRV Z-Score, Open Interest, BTC Dominance, ETH/BTC Ratio
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Altseason Top */}
+            <div className="bg-gradient-to-br from-cyan-900/20 to-cyan-800/10 border border-cyan-500/30 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-base font-semibold text-white">Altseason Top</h3>
+                <div className="text-cyan-400">⚡</div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-300">Alt Progress:</span>
+                  <span className="text-xl font-bold text-cyan-400">{cycleData?.altseason_progress || 51}%</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-300">ETH/BTC:</span>
+                  <span className="text-sm text-white font-medium">
+                    {cycleData?.confluence_indicators?.eth_btc_ratio?.toFixed(4) || "0.0400"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-300">Phase:</span>
+                  <span className="text-sm text-cyan-400 font-medium capitalize">
+                    {cycleData?.confluence_indicators?.altcoin_season_signal === "btc-season"
+                      ? "BTC Season"
+                      : cycleData?.confluence_indicators?.altcoin_season_signal === "alt-season"
+                        ? "Alt Season"
+                        : "Rotation"}
+                  </span>
+                </div>
+                <div className="mt-2 pt-2 border-t border-cyan-500/20">
+                  <p className="text-[10px] text-cyan-300 leading-tight">
+                    Based on: ETH/BTC Ratio, BTC Dominance Trend, Funding Rates, Open Interest, Market Rotation
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="relative mb-8 mt-8">
+            <div className="flex gap-4">
+              <div className="search-container relative flex-1">
+                <input
+                  type="text"
+                  placeholder={`Search ${activeTab}...`}
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                  onKeyDown={handleKeyPress}
+                  onFocus={() => {
+                    if (searchQuery.trim() && searchResults.length > 0) {
+                      setShowDropdown(true)
+                    }
+                  }}
+                  className="w-full px-4 py-3 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+                {isSearching && (
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
+                  </div>
+                )}
+
+                {showDropdown && searchResults.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-gray-800 border border-gray-600 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
+                    {searchResults.map((result) => (
+                      <div
+                        key={result.id}
+                        onClick={async () => {
+                          console.log("[v0] Dropdown item clicked:", result.symbol || result.name)
+                          setSelectedToken(result)
+                          setSearchQuery(result.symbol || result.name)
+                          setShowDropdown(false)
+                          // Trigger analysis immediately when clicking a token
+                          setIsAnalyzing(true)
+                          setAnalysisData(null)
+                          setCryptoAnalysisError(null) // Clear crypto-specific error
+                          try {
+                            console.log(
+                              "[v0] Auto-triggering analysis for:",
+                              result.symbol || result.name,
+                              "in tab:",
+                              activeTab,
+                            )
+                            const response = await fetch("/api/analysis", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.JSON.stringify({
+                                symbol: result.symbol || result.name,
+                                market_type: activeTab,
+                              }),
+                            })
+
+                            const contentType = response.headers.get("content-type")
+                            if (!contentType || !contentType.includes("application/json")) {
+                              throw new Error("Server returned non-JSON response")
+                            }
+
+                            const data = await response.json()
+                            console.log("[v0] Auto-trigger analysis response:", data)
+                            if (data.success) {
+                              setAnalysisData(data)
+                            } else {
+                              throw new Error(data.error || "Analysis failed")
+                            }
+                          } catch (error: any) {
+                            console.error("[v0] Auto-trigger analysis error:", error)
+                            setCryptoAnalysisError(error.message || "Analysis failed. Please try again.") // Set crypto-specific error
+                            setAnalysisData(null)
+                          } finally {
+                            setIsAnalyzing(false)
+                          }
+                        }}
+                        className="flex items-center gap-3 p-3 hover:bg-gray-700 cursor-pointer border-b border-gray-700 last:border-b-0"
+                      >
+                        <img
+                          src={result.thumb || result.image || "/placeholder.svg?height=24&width=24"}
+                          alt={result.name}
+                          className="w-6 h-6 rounded-full"
+                          onError={handleImageError}
+                        />
+                        <div className="flex-1">
+                          <div className="font-medium text-white">{result.name}</div>
+                          <div className="text-sm text-gray-400">{result.symbol?.toUpperCase()}</div>
+                        </div>
+                        <div className="text-sm text-gray-400">#{result.market_cap_rank}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={handleAnalyzeClick}
+                disabled={isAnalyzing || !searchQuery.trim()}
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-colors flex items-center gap-2"
+              >
+                <Search className="w-4 h-4" />
+                {isAnalyzing ? "Analysing..." : "Analyse"}
               </button>
-            ))}
+            </div>
           </div>
+
+          {analysisData && !analysisData.error && (
+            <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white">Analysis for {searchQuery.toUpperCase()}</h2>
+                <button
+                  onClick={() => {
+                    setAnalysisData(null)
+                    setCryptoAnalysisError(null)
+                  }}
+                  className="text-gray-400 hover:text-white"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              {renderAdvancedAnalysis(analysisData)}
+            </div>
+          )}
+
+          {cryptoAnalysisError && ( // Use cryptoAnalysisError for specific errors
+            <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-6 mb-8">
+              <div className="flex items-center gap-3">
+                <X className="w-6 h-6 text-red-400" />
+                <div>
+                  <h3 className="text-red-400 font-semibold">Analysis Error</h3>
+                  <p className="text-red-300 text-sm">{cryptoAnalysisError}</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-
-        {/* Main Market Data Cards - Moved to be conditionally rendered */}
-        {activeTab === "cryptocurrency" && (
-          <div className="space-y-8">
-            {/* Main Market Data Cards - 2x6 Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              {/* Total Market Cap */}
-              <div className="bg-gray-800/50 border border-green-500/20 rounded-xl p-4 hover:bg-green-900/10 hover:border-green-400/40 transition-all duration-300 group">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium text-gray-400 group-hover:text-green-300 transition-colors">
-                    Total Market Cap
-                  </h3>
-                  <div className="text-green-400">$</div>
-                </div>
-                <div className="text-2xl font-bold text-white group-hover:text-green-100 transition-colors">
-                  {marketData?.total_market_cap ? formatNumber(marketData.total_market_cap) : "$4.12T"}
-                </div>
-                <div
-                  className={`text-sm ${marketData?.market_cap_change_percentage_24h && marketData.market_cap_change_percentage_24h >= 0 ? "text-green-400" : "text-red-400"}`}
-                >
-                  {marketData?.market_cap_change_percentage_24h
-                    ? `${marketData.market_cap_change_percentage_24h >= 0 ? "+" : ""}${marketData.market_cap_change_percentage_24h.toFixed(2)}% 24h`
-                    : "-0.38% 24h"}
-                </div>
-              </div>
-
-              {/* 24h Volume */}
-              <div className="bg-gray-800/50 border border-blue-500/20 rounded-xl p-4 hover:bg-blue-900/10 hover:border-blue-400/40 transition-all duration-300 group">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium text-gray-400 group-hover:text-blue-300 transition-colors">
-                    24h Volume
-                  </h3>
-                  <div className="text-blue-400">📊</div>
-                </div>
-                <div className="text-2xl font-bold text-white group-hover:text-blue-100 transition-colors">
-                  {marketData?.total_volume_24h ? formatNumber(marketData.total_volume_24h) : "$153.7B"}
-                </div>
-                <div className="text-sm text-gray-400">Volume</div>
-              </div>
-
-              {/* BTC Price */}
-              <div className="bg-gray-800/50 border border-orange-500/20 rounded-xl p-4 hover:bg-orange-900/10 hover:border-orange-400/40 transition-all duration-300 group">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium text-gray-400 group-hover:text-orange-300 transition-colors">
-                    BTC Price
-                  </h3>
-                  <div className="text-orange-400">₿</div>
-                </div>
-                <div className="text-2xl font-bold text-white group-hover:text-orange-100 transition-colors">
-                  {marketData?.btc_price ? formatBTCPrice(marketData.btc_price) : "$115,578"}
-                </div>
-                <div
-                  className={`text-sm ${marketData?.btc_price_change_24h && marketData.btc_price_change_24h >= 0 ? "text-green-400" : "text-red-400"}`}
-                >
-                  {marketData?.btc_price_change_24h
-                    ? `${marketData.btc_price_change_24h >= 0 ? "+" : ""}${marketData.btc_price_change_24h.toFixed(2)}% 24h`
-                    : "-0.15% 24h"}
-                </div>
-              </div>
-
-              {/* BTC Dominance */}
-              <div className="bg-gray-800/50 border border-yellow-500/20 rounded-xl p-4 hover:bg-yellow-900/10 hover:border-yellow-400/40 transition-all duration-300 group">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium text-gray-400 group-hover:text-yellow-300 transition-colors">
-                    BTC Dominance
-                  </h3>
-                  <div className="text-yellow-400">⚡</div>
-                </div>
-                <div className="text-2xl font-bold text-white group-hover:text-yellow-100 transition-colors">
-                  {marketData?.btc_dominance ? `${marketData.btc_dominance.toFixed(1)}%` : "58.1%"}
-                </div>
-                <div className="text-sm text-gray-400">Market Share</div>
-              </div>
-
-              {/* USDT Dominance */}
-              <div className="bg-gray-800/50 border border-cyan-500/20 rounded-xl p-4 hover:bg-cyan-900/10 hover:border-cyan-400/40 transition-all duration-300 group">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium text-gray-400 group-hover:text-cyan-300 transition-colors">
-                    USDT Dominance
-                  </h3>
-                  <div className="text-cyan-400">💰</div>
-                </div>
-                <div className="text-2xl font-bold text-white group-hover:text-cyan-100 transition-colors">
-                  {marketData?.usdt_dominance ? `${marketData.usdt_dominance.toFixed(1)}%` : "4.5%"}
-                </div>
-                <div className="text-sm text-gray-400">Stablecoin Share</div>
-              </div>
-
-              {/* Total3 Market Cap */}
-              <div className="bg-gray-800/50 border border-purple-500/20 rounded-xl p-4 hover:bg-purple-900/10 hover:border-purple-400/40 transition-all duration-300 group">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium text-gray-400 group-hover:text-purple-300 transition-colors">
-                    Total3 Market Cap
-                  </h3>
-                  <div className="text-purple-400">📈</div>
-                </div>
-                <div className="text-2xl font-bold text-white group-hover:text-purple-100 transition-colors">
-                  {marketData?.total3_market_cap ? formatNumber(marketData.total3_market_cap) : "$1.1T"}
-                </div>
-                <div
-                  className={`text-sm ${marketData?.total3_change_24h && marketData.total3_change_24h >= 0 ? "text-green-400" : "text-red-400"}`}
-                >
-                  {marketData?.total3_change_24h
-                    ? `${marketData.total3_change_24h >= 0 ? "+" : ""}${marketData.total3_change_24h.toFixed(2)}% 24h`
-                    : "-0.38% 24h"}
-                </div>
-              </div>
-            </div>
-
-            {/* Bull Market Top and Altseason Analysis Cards */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Bull Market Top */}
-              <div className="bg-gradient-to-br from-purple-900/20 to-purple-800/10 border border-purple-500/30 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-base font-semibold text-white">Bull Market Top</h3>
-                  <div className="text-purple-400">📈</div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-300">Progress:</span>
-                    <span className="text-xl font-bold text-purple-400">76%</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-300">Est. Top:</span>
-                    <span className="text-sm text-white font-medium">Jan 9, 2026</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-300">Confluence:</span>
-                    <span className="text-lg font-bold text-purple-400">47%</span>
-                  </div>
-                  <div className="mt-2 pt-2 border-t border-purple-500/20">
-                    <p className="text-[10px] text-purple-300 leading-tight">
-                      Based on: Pi Cycle, MVRV Z-Score, Open Interest, BTC Dominance, ETH/BTC Ratio
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Altseason Top */}
-              <div className="bg-gradient-to-br from-cyan-900/20 to-cyan-800/10 border border-cyan-500/30 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-base font-semibold text-white">Altseason Top</h3>
-                  <div className="text-cyan-400">⚡</div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-300">Alt Progress:</span>
-                    <span className="text-xl font-bold text-cyan-400">51%</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-300">ETH/BTC:</span>
-                    <span className="text-sm text-white font-medium">0.0400</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-300">Phase:</span>
-                    <span className="text-sm text-cyan-400 font-medium">Rotation</span>
-                  </div>
-                  <div className="mt-2 pt-2 border-t border-cyan-500/20">
-                    <p className="text-[10px] text-cyan-300 leading-tight">
-                      Based on: ETH/BTC Ratio, BTC Dominance Trend, Funding Rates, Open Interest, Market Rotation
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="relative mb-8 mt-8">
-              <div className="flex gap-4">
-                <div className="search-container relative flex-1">
-                  <input
-                    type="text"
-                    placeholder={`Search ${activeTab}...`}
-                    value={searchQuery}
-                    onChange={handleSearchChange}
-                    onKeyDown={handleKeyPress}
-                    onFocus={() => {
-                      if (searchQuery.trim() && searchResults.length > 0) {
-                        setShowDropdown(true)
-                      }
-                    }}
-                    className="w-full px-4 py-3 bg-gray-800/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  />
-                  {isSearching && (
-                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
-                    </div>
-                  )}
-
-                  {showDropdown && searchResults.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-gray-800 border border-gray-600 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
-                      {searchResults.map((result) => (
-                        <div
-                          key={result.id}
-                          onClick={async () => {
-                            console.log("[v0] Dropdown item clicked:", result.symbol || result.name)
-                            setSelectedToken(result)
-                            setSearchQuery(result.symbol || result.name)
-                            setShowDropdown(false)
-                            // Trigger analysis immediately when clicking a token
-                            setIsAnalyzing(true)
-                            setAnalysisData(null)
-                            setCryptoAnalysisError(null) // Clear crypto-specific error
-                            try {
-                              console.log(
-                                "[v0] Auto-triggering analysis for:",
-                                result.symbol || result.name,
-                                "in tab:",
-                                activeTab,
-                              )
-                              const response = await fetch("/api/analysis", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  symbol: result.symbol || result.name,
-                                  market_type: activeTab,
-                                }),
-                              })
-
-                              const contentType = response.headers.get("content-type")
-                              if (!contentType || !contentType.includes("application/json")) {
-                                throw new Error("Server returned non-JSON response")
-                              }
-
-                              const data = await response.json()
-                              console.log("[v0] Auto-trigger analysis response:", data)
-                              if (data.success) {
-                                setAnalysisData(data)
-                              } else {
-                                throw new Error(data.error || "Analysis failed")
-                              }
-                            } catch (error: any) {
-                              console.error("[v0] Auto-trigger analysis error:", error)
-                              setCryptoAnalysisError(error.message || "Analysis failed. Please try again.") // Set crypto-specific error
-                              setAnalysisData(null)
-                            } finally {
-                              setIsAnalyzing(false)
-                            }
-                          }}
-                          className="flex items-center gap-3 p-3 hover:bg-gray-700 cursor-pointer border-b border-gray-700 last:border-b-0"
-                        >
-                          <img
-                            src={result.thumb || result.image || "/placeholder.svg?height=24&width=24"}
-                            alt={result.name}
-                            className="w-6 h-6 rounded-full"
-                            onError={handleImageError}
-                          />
-                          <div className="flex-1">
-                            <div className="font-medium text-white">{result.name}</div>
-                            <div className="text-sm text-gray-400">{result.symbol?.toUpperCase()}</div>
-                          </div>
-                          <div className="text-sm text-gray-400">#{result.market_cap_rank}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={handleAnalyzeClick}
-                  disabled={isAnalyzing || !searchQuery.trim()}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-colors flex items-center gap-2"
-                >
-                  <Search className="w-4 h-4" />
-                  {isAnalyzing ? "Analysing..." : "Analyse"}
-                </button>
-              </div>
-            </div>
-
-            {analysisData && !analysisData.error && (
-              <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold text-white">Analysis for {searchQuery.toUpperCase()}</h2>
-                  <button
-                    onClick={() => {
-                      setAnalysisData(null)
-                      setCryptoAnalysisError(null)
-                    }}
-                    className="text-gray-400 hover:text-white"
-                  >
-                    <X className="w-6 h-6" />
-                  </button>
-                </div>
-                {renderAdvancedAnalysis(analysisData)}
-              </div>
-            )}
-
-            {cryptoAnalysisError && ( // Use cryptoAnalysisError for specific errors
-              <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-6 mb-8">
-                <div className="flex items-center gap-3">
-                  <X className="w-6 h-6 text-red-400" />
-                  <div>
-                    <h3 className="text-red-400 font-semibold">Analysis Error</h3>
-                    <p className="text-red-300 text-sm">{cryptoAnalysisError}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Commodities Tab Content */}
-        {activeTab === "commodities" && (
-          <div className="space-y-8">
-            {/* Commodities List */}
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              {commoditiesDataList.map((item) => (
-                <div
-                  key={item.symbol}
-                  className="bg-gradient-to-br from-slate-800/40 to-slate-700/40 rounded-xl p-4 border border-slate-600/30 hover:border-yellow-400/50 transition-all duration-300 cursor-pointer group"
-                  onClick={() => handleCommodityAnalyze(item.symbol)}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
-                      <h3 className="text-base font-semibold text-yellow-300">{item.name}</h3>
-                    </div>
-                    <span className="text-xs font-medium text-gray-400">{item.symbol}</span>
-                  </div>
-                  <div className="mb-2">
-                    <div className="text-2xl font-bold text-white group-hover:text-yellow-100 transition-colors">
-                      ${item.price.toFixed(2)}
-                    </div>
-                    <div className={`text-sm font-medium ${item.change >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      {item.change >= 0 ? "+" : ""}
-                      {item.change.toFixed(2)}%
-                    </div>
-                  </div>
-                  <div
-                    className={`text-xs px-2 py-1 rounded-full font-medium text-center ${item.trend === "Bullish" ? "bg-green-500/20 text-green-400" : item.trend === "Bearish" ? "bg-red-500/20 text-red-400" : "bg-yellow-500/20 text-yellow-400"}`}
-                  >
-                    {item.trend}
-                  </div>
-                  <div className="mt-2 pt-2 border-t border-slate-600/20 text-[10px] text-slate-300">
-                    {item.type} | {item.volume}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Commodities Market Sentiment */}
-            <div className="bg-gradient-to-br from-green-900/20 to-gray-800/20 rounded-xl p-6 border border-green-500/30">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="p-1 bg-green-500/20 rounded">
-                  <Brain className="w-5 h-5 text-green-400" />
-                </div>
-                <h3 className="text-green-300 font-semibold text-lg">Commodities Market Sentiment</h3>
-              </div>
-              <p className="text-gray-300 text-sm">
-                Current commodities market showing mixed signals. Gold and Silver maintaining bullish momentum while
-                energy commodities face headwinds. Agricultural commodities showing seasonal patterns.
-              </p>
-            </div>
-
-            <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
-              <h3 className="text-xl font-semibold text-yellow-300 mb-4">Search & Analyse Commodities</h3>
-              <div className="flex gap-4">
-                <div className="search-container relative flex-1">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value)
-                      if (e.target.value.trim()) {
-                        searchTokens(e.target.value)
-                      } else {
-                        setSearchResults([])
-                        setShowDropdown(false)
-                      }
-                    }}
-                    onFocus={() => {
-                      if (searchQuery.trim() && searchResults.length > 0) {
-                        setShowDropdown(true)
-                      }
-                    }}
-                    placeholder="Search commodities..."
-                    className="w-full bg-gray-900/50 text-white px-6 py-4 rounded-lg border border-gray-700 focus:border-yellow-500 focus:outline-none focus:ring-2 focus:ring-yellow-500/20 transition-all"
-                  />
-                  {isSearching && (
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-yellow-500" />
-                    </div>
-                  )}
-
-                  {showDropdown && searchResults.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-gray-800 border border-gray-600 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
-                      {searchResults.map((result) => (
-                        <div
-                          key={result.id}
-                          onClick={async () => {
-                            console.log("[v0] Commodities dropdown item clicked:", result.symbol || result.name)
-                            setSelectedToken(result)
-                            setSearchQuery(result.symbol || result.name)
-                            setShowDropdown(false)
-
-                            setIsAnalyzing(true)
-                            setAnalysisData(null)
-                            setCommoditiesAnalysisError(null) // Clear commodity-specific error
-
-                            try {
-                              console.log(
-                                "[v0] Auto-triggering commodities analysis for:",
-                                result.symbol || result.name,
-                              )
-                              const response = await fetch("/api/analysis", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  symbol: result.symbol || result.name,
-                                  market_type: activeTab,
-                                }),
-                              })
-
-                              const contentType = response.headers.get("content-type")
-                              if (!contentType || !contentType.includes("application/json")) {
-                                throw new Error("Server returned non-JSON response")
-                              }
-
-                              const data = await response.json()
-                              console.log("[v0] Commodities auto-trigger response:", data)
-                              if (data.success) {
-                                setAnalysisData(data)
-                              } else {
-                                throw new Error(data.error || "Commodity analysis failed")
-                              }
-                            } catch (error: any) {
-                              console.error("[v0] Commodities auto-trigger error:", error)
-                              setCommoditiesAnalysisError(
-                                error.message || "Commodity analysis failed. Please try again.",
-                              )
-                              setAnalysisData(null)
-                            } finally {
-                              setIsAnalyzing(false)
-                            }
-                          }}
-                          className="flex items-center gap-3 p-3 hover:bg-gray-700 cursor-pointer border-b border-gray-700 last:border-b-0"
-                        >
-                          <div className="flex-1">
-                            <div className="font-medium text-white">{result.name}</div>
-                            <div className="text-sm text-gray-400">{result.symbol?.toUpperCase()}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={handleAnalyzeClick}
-                  disabled={!searchQuery.trim() || isAnalyzing}
-                  className="flex items-center gap-2 px-8 py-4 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all shadow-lg hover:shadow-yellow-500/20"
-                >
-                  <Search className="w-5 h-5" />
-                  {isAnalyzing ? "Analysing..." : "Analyse"}
-                </button>
-              </div>
-            </div>
-
-            {analysisData && !analysisData.error && (
-              <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold text-white">Analysis for {searchQuery.toUpperCase()}</h2>
-                  <button
-                    onClick={() => {
-                      setAnalysisData(null)
-                      setCommoditiesAnalysisError(null)
-                    }}
-                    className="text-gray-400 hover:text-white"
-                  >
-                    <X className="w-6 h-6" />
-                  </button>
-                </div>
-                {renderAdvancedAnalysis(analysisData)}
-              </div>
-            )}
-
-            {commoditiesAnalysisError && ( // Use commoditiesAnalysisError for specific errors
-              <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-6 mb-8">
-                <div className="flex items-center gap-3">
-                  <X className="w-6 h-6 text-red-400" />
-                  <div>
-                    <h3 className="text-red-400 font-semibold">Analysis Error</h3>
-                    <p className="text-red-300 text-sm">{commoditiesAnalysisError}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Forex Tab Content */}
-        {activeTab === "forex" && (
-          <div className="space-y-8">
-            {/* Forex List */}
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              {forexDataList.slice(0, 6).map((item) => (
-                <div
-                  key={item.symbol}
-                  className="bg-gradient-to-br from-slate-800/40 to-slate-700/40 rounded-xl p-4 border border-slate-600/30 hover:border-cyan-400/50 transition-all duration-300 cursor-pointer group"
-                  onClick={() => handleForexAnalyze(item.symbol)}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
-                      <h3 className="text-base font-semibold text-cyan-300">{item.name}</h3>
-                    </div>
-                    <span className="text-xs font-medium text-gray-400">{item.symbol}</span>
-                  </div>
-                  <div className="mb-2">
-                    <div className="text-2xl font-bold text-white group-hover:text-cyan-100 transition-colors">
-                      {item.price.toFixed(5)}
-                    </div>
-                    <div className={`text-sm font-medium ${item.change >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      {item.change >= 0 ? "+" : ""}
-                      {item.change.toFixed(2)}%
-                    </div>
-                  </div>
-                  <div
-                    className={`text-xs px-2 py-1 rounded-full font-medium text-center ${item.trend === "Bullish" ? "bg-green-500/20 text-green-400" : item.trend === "Bearish" ? "bg-red-500/20 text-red-400" : "bg-yellow-500/20 text-yellow-400"}`}
-                  >
-                    {item.trend}
-                  </div>
-                  <div className="mt-2 pt-2 border-t border-slate-600/20 text-[10px] text-slate-300">
-                    {item.type} | {item.volume}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Forex Market Sentiment */}
-            <div className="bg-gradient-to-br from-blue-900/20 to-gray-800/20 rounded-xl p-6 border border-blue-500/30">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="p-1 bg-blue-500/20 rounded">
-                  <Brain className="w-5 h-5 text-blue-400" />
-                </div>
-                <h3 className="text-blue-300 font-semibold text-lg">Forex Market Sentiment</h3>
-              </div>
-              <p className="text-gray-300 text-sm">
-                Global forex markets showing increased volatility. USD strength continues amid economic data releases.
-                Major pairs experiencing technical consolidation patterns. Watch for central bank policy announcements.
-              </p>
-            </div>
-
-            <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
-              <h3 className="text-xl font-semibold text-cyan-300 mb-4">Search & Analyse Forex Pairs</h3>
-              <div className="flex gap-4">
-                <div className="search-container relative flex-1">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value)
-                      if (e.target.value.trim()) {
-                        searchTokens(e.target.value)
-                      } else {
-                        setSearchResults([])
-                        setShowDropdown(false)
-                      }
-                    }}
-                    onFocus={() => {
-                      if (searchQuery.trim() && searchResults.length > 0) {
-                        setShowDropdown(true)
-                      }
-                    }}
-                    placeholder="Search forex pairs..."
-                    className="w-full bg-gray-900/50 text-white px-6 py-4 rounded-lg border border-gray-700 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all"
-                  />
-                  {isSearching && (
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-cyan-500" />
-                    </div>
-                  )}
-
-                  {showDropdown && searchResults.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-gray-800 border border-gray-600 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
-                      {searchResults.map((result) => (
-                        <div
-                          key={result.id}
-                          onClick={async () => {
-                            console.log("[v0] Forex dropdown item clicked:", result.symbol || result.name)
-                            setSelectedToken(result)
-                            setSearchQuery(result.symbol || result.name)
-                            setShowDropdown(false)
-
-                            setIsAnalyzing(true)
-                            setAnalysisData(null)
-                            setForexAnalysisError(null) // Clear forex-specific error
-
-                            try {
-                              console.log("[v0] Auto-triggering forex analysis for:", result.symbol || result.name)
-                              const response = await fetch("/api/analysis", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  symbol: result.symbol || result.name,
-                                  market_type: activeTab,
-                                }),
-                              })
-
-                              const contentType = response.headers.get("content-type")
-                              if (!contentType || !contentType.includes("application/json")) {
-                                throw new Error("Server returned non-JSON response")
-                              }
-
-                              const data = await response.json()
-                              console.log("[v0] Forex auto-trigger response:", data)
-                              if (data.success) {
-                                setAnalysisData(data)
-                              } else {
-                                throw new Error(data.error || "Forex analysis failed")
-                              }
-                            } catch (error: any) {
-                              console.error("[v0] Forex auto-trigger error:", error)
-                              setForexAnalysisError(error.message || "Forex analysis failed. Please try again.")
-                              setAnalysisData(null)
-                            } finally {
-                              setIsAnalyzing(false)
-                            }
-                          }}
-                          className="flex items-center gap-3 p-3 hover:bg-gray-700 cursor-pointer border-b border-gray-700 last:border-b-0"
-                        >
-                          <div className="flex-1">
-                            <div className="font-medium text-white">{result.name}</div>
-                            <div className="text-sm text-gray-400">{result.symbol?.toUpperCase()}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={handleAnalyzeClick}
-                  disabled={!searchQuery.trim() || isAnalyzing}
-                  className="flex items-center gap-2 px-8 py-4 bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all shadow-lg hover:shadow-cyan-500/20"
-                >
-                  <Search className="w-5 h-5" />
-                  {isAnalyzing ? "Analysing..." : "Analyse"}
-                </button>
-              </div>
-            </div>
-
-            {analysisData && !analysisData.error && (
-              <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold text-white">Analysis for {searchQuery.toUpperCase()}</h2>
-                  <button
-                    onClick={() => {
-                      setAnalysisData(null)
-                      setForexAnalysisError(null)
-                    }}
-                    className="text-gray-400 hover:text-white"
-                  >
-                    <X className="w-6 h-6" />
-                  </button>
-                </div>
-                {renderAdvancedAnalysis(analysisData)}
-              </div>
-            )}
-
-            {forexAnalysisError && ( // Use forexAnalysisError for specific errors
-              <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-6 mb-8">
-                <div className="flex items-center gap-3">
-                  <X className="w-6 h-6 text-red-400" />
-                  <div>
-                    <h3 className="text-red-400 font-semibold">Analysis Error</h3>
-                    <p className="text-red-300 text-sm">{forexAnalysisError}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         <footer className="mt-12 border-t border-gray-800 pt-8">
           <div className="text-center space-y-6">

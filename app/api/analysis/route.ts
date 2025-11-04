@@ -1,5 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
 import type { AnalysisResult, TradingSignal, TechnicalIndicators, CryptoToken, ApiResponse } from "@/lib/types"
+import { analyzeWithAI } from "@/lib/ai-client"
+import { subscriptions } from "../webhooks/stripe/route"
+import { HfInference } from "@huggingface/inference" // Import HfInference
+
+const hf = new HfInference(process.env.HUGGINGFACE_API_KEY)
 
 // AI-powered analysis engine
 class AnalysisEngine {
@@ -74,53 +79,52 @@ class AnalysisEngine {
     }
   }
 
-  private async getAIAnalysis(tokenSymbol: string, currentPrice: number): Promise<string> {
+  private async getAIAnalysis(tokenSymbol: string, currentPrice: number, technicalData: any): Promise<string> {
     try {
-      const prompt = `Analyze ${tokenSymbol} cryptocurrency trading at $${currentPrice}. Provide a brief technical analysis focusing on: 1) Current market sentiment, 2) Key price levels to watch, 3) Potential trading opportunities. Keep response under 100 words.`
+      const prompt = `You are a professional cryptocurrency trading analyst. Analyze ${tokenSymbol} trading at $${currentPrice}.
 
-      console.log("[v0] Calling Hugging Face API for analysis...")
+Technical Data:
+- RSI: ${technicalData.rsi.toFixed(1)}
+- MACD Signal: ${technicalData.macd?.signal || "Neutral"}
+- EMA 8/21 Crossover: ${technicalData.ema_crossover?.signal || "Neutral"}
+- Trend Direction: ${technicalData.trend_direction}
+- 24h Price Change: ${technicalData.price_change_24h?.toFixed(2)}%
 
-      const response = await fetch("https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          inputs: prompt,
-          parameters: {
-            max_new_tokens: 150,
-            temperature: 0.7,
-            top_p: 0.95,
-            return_full_text: false,
-          },
-        }),
-        signal: AbortSignal.timeout(30000), // 30 second timeout
+Provide a concise 2-3 sentence trading analysis focusing on:
+1. Current market sentiment (bullish/bearish/neutral)
+2. Key technical levels and price action
+3. Short-term trading recommendation
+
+Keep it professional and actionable.`
+
+      const aiResponse = await analyzeWithAI({
+        prompt,
+        max_length: 512,
       })
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error("[v0] Hugging Face API error:", response.status, errorText)
-        throw new Error(`Hugging Face API failed: ${response.status}`)
+      if (aiResponse.success && aiResponse.result) {
+        console.log(`[v0] AI analysis generated successfully (model: ${aiResponse.model_used})`)
+        return aiResponse.result
       }
 
-      const data = await response.json()
-      console.log("[v0] Hugging Face API response:", data)
-
-      // Hugging Face returns an array with generated_text
-      const text = Array.isArray(data) ? data[0]?.generated_text : data?.generated_text
-
-      if (text && text.trim().length > 0) {
-        console.log("[v0] Hugging Face analysis generated successfully")
-        return text.trim()
-      }
-
-      console.log("[v0] Hugging Face returned empty response, using fallback")
-      return `AI analysis for ${tokenSymbol}: Market conditions suggest monitoring key levels for potential trading opportunities. Current price action at $${currentPrice} indicates ${currentPrice > 1000 ? "established asset" : "emerging opportunity"} with volatility-driven setups available.`
+      return this.generateEnhancedFallbackAnalysis(tokenSymbol, currentPrice)
     } catch (error) {
-      console.error("[v0] Hugging Face API error:", error)
-      return `AI analysis for ${tokenSymbol}: Technical patterns suggest potential price movement based on current market conditions at $${currentPrice}. Current price action indicates ${currentPrice > 1000 ? "established asset with strong fundamentals" : "emerging opportunity with growth potential"} - monitor key support and resistance levels for optimal entry points.`
+      return this.generateEnhancedFallbackAnalysis(tokenSymbol, currentPrice)
     }
+  }
+
+  private generateEnhancedFallbackAnalysis(tokenSymbol: string, currentPrice: number): string {
+    const priceCategory = currentPrice > 10000 ? "large-cap" : currentPrice > 100 ? "mid-cap" : "small-cap"
+    const volatilityNote = currentPrice < 1 ? "high volatility expected" : "moderate volatility"
+
+    const insights = [
+      `${tokenSymbol} trading at $${currentPrice.toFixed(currentPrice < 1 ? 6 : 2)} shows ${priceCategory} characteristics.`,
+      `Technical analysis indicates ${volatilityNote} with key support and resistance levels identified.`,
+      `Market structure suggests monitoring volume patterns and trend confirmation for optimal entry points.`,
+      `Risk management essential - use stop losses and position sizing based on account risk tolerance.`,
+    ]
+
+    return insights.join(" ")
   }
 
   private calculateEMA(prices: number[], period: number): number[] {
@@ -517,7 +521,7 @@ class AnalysisEngine {
     const priceChange24h = token.price_change_percentage_24h
     if (priceChange24h > 5) {
       technicalFactors.push(`Strong Momentum (+${priceChange24h.toFixed(1)}%)`)
-      if (signal === "Hold") signal = "Buy"
+      if (signal === "Hold" || signal === "Buy") signal = signal === "Hold" ? "Buy" : "Strong Buy"
       confidence += 12
     } else if (priceChange24h > 2) {
       technicalFactors.push(`Positive Momentum (+${priceChange24h.toFixed(1)}%)`)
@@ -568,40 +572,50 @@ class AnalysisEngine {
     }
   }
 
-  private generateAIInsight(token: CryptoToken, signals: TradingSignal[], tradeSetup: any): Promise<string> {
+  private async generateAIInsight(
+    token: CryptoToken,
+    signals: TradingSignal[],
+    tradeSetup: any,
+    technicalIndicators: any,
+  ): Promise<string> {
     const bullishSignals = signals.filter((s) => s.signal === "Strong Buy" || s.signal === "Buy").length
     const bearishSignals = signals.filter((s) => s.signal === "Strong Sell" || s.signal === "Sell").length
 
     const marketCapCategory =
       token.market_cap > 100000000000 ? "large-cap" : token.market_cap > 10000000000 ? "mid-cap" : "small-cap"
 
-    // The AI analysis is now called within this method
-    return this.getAIAnalysis(token.symbol, token.current_price).then((aiAnalysis) => {
-      let insight = `${token.name} (${token.symbol.toUpperCase()}) is a ${marketCapCategory} cryptocurrency `
+    let insight = `${token.name} (${token.symbol.toUpperCase()}) is a ${marketCapCategory} cryptocurrency `
 
-      if (bullishSignals > bearishSignals) {
-        insight += `showing bullish momentum across multiple timeframes. The confluence of technical indicators suggests potential upward price movement. `
-      } else if (bearishSignals > bullishSignals) {
-        insight += `displaying bearish characteristics with multiple sell signals. Technical analysis indicates potential downward pressure. `
-      } else {
-        insight += `in a consolidation phase with mixed signals across timeframes. Market indecision suggests waiting for clearer directional bias. `
-      }
+    if (bullishSignals > bearishSignals) {
+      insight += `showing bullish momentum across multiple timeframes. The confluence of technical indicators suggests potential upward price movement. `
+    } else if (bearishSignals > bullishSignals) {
+      insight += `displaying bearish characteristics with multiple sell signals. Technical analysis indicates potential downward pressure. `
+    } else {
+      insight += `in a consolidation phase with mixed signals across timeframes. Market indecision suggests waiting for clearer directional bias. `
+    }
 
-      // Add specific insights based on price performance
-      if (token.price_change_percentage_24h > 15) {
-        insight += `Strong 24h performance (+${token.price_change_percentage_24h.toFixed(1)}%) indicates high volatility and momentum. `
-      } else if (token.price_change_percentage_24h < -15) {
-        insight += `Significant 24h decline (${token.price_change_percentage_24h.toFixed(1)}%) suggests selling pressure or market correction. `
-      }
+    // Add specific insights based on price performance
+    if (token.price_change_percentage_24h > 15) {
+      insight += `Strong 24h performance (+${token.price_change_percentage_24h.toFixed(1)}%) indicates high volatility and momentum. `
+    } else if (token.price_change_percentage_24h < -15) {
+      insight += `Significant 24h decline (${token.price_change_percentage_24h.toFixed(1)}%) suggests selling pressure or market correction. `
+    }
 
-      insight += `Current market position at rank #${token.market_cap_rank} with $${(token.market_cap / 1000000000).toFixed(2)}B market cap provides context for risk assessment. `
+    insight += `Current market position at rank #${token.market_cap_rank} with $${(token.market_cap / 1000000000).toFixed(2)}B market cap provides context for risk assessment. `
 
-      insight += `Recommended position size: ${tradeSetup.position_size} with ${tradeSetup.risk_reward_ratio} risk/reward ratio.`
+    insight += `Recommended position size: ${tradeSetup.position_size} with ${tradeSetup.risk_reward_ratio} risk/reward ratio. `
 
-      insight += ` AI Analysis: ${aiAnalysis}`
-
-      return insight
+    const aiAnalysis = await this.getAIAnalysis(token.symbol, token.current_price, {
+      rsi: technicalIndicators.rsi,
+      macd: technicalIndicators.macd,
+      ema_crossover: technicalIndicators.ema_crossover,
+      trend_direction: technicalIndicators.trend_direction,
+      price_change_24h: token.price_change_percentage_24h,
     })
+
+    insight += `AI Analysis: ${aiAnalysis}`
+
+    return insight
   }
 
   private generateTimeframeAnalysis(
@@ -697,17 +711,6 @@ class AnalysisEngine {
       conflictingIndicators.push("Neutral Trend Direction")
     }
 
-    const momentumThreshold = isShortTerm ? 4 : 8
-    if (priceChange24h > momentumThreshold) {
-      alignedIndicators.push(`Strong Momentum (+${priceChange24h.toFixed(1)}%)`)
-      if (signal === "Hold" || signal === "Buy") signal = signal === "Hold" ? "Buy" : "Strong Buy"
-      confidence += 12
-    } else if (priceChange24h < -momentumThreshold) {
-      alignedIndicators.push(`Negative Momentum (${priceChange24h.toFixed(1)}%)`)
-      if (signal === "Hold" || signal === "Sell") signal = signal === "Hold" ? "Sell" : "Strong Sell"
-      confidence += 12
-    }
-
     // Volume Confirmation
     if (indicators.volume_indicator === "High") {
       alignedIndicators.push("High Volume Confirmation")
@@ -789,8 +792,7 @@ class AnalysisEngine {
     const shortTermAnalysis = this.generateTimeframeAnalysis(token, technicalIndicators, "short")
     const longTermAnalysis = this.generateTimeframeAnalysis(token, technicalIndicators, "long")
 
-    // Moved AI Insight generation to happen after other analyses are complete
-    // const aiInsight = await this.generateAIInsight(token, signals, tradeSetup)
+    const aiInsight = await this.generateAIInsight(token, signals, tradeSetup, technicalIndicators)
 
     return {
       token,
@@ -799,7 +801,7 @@ class AnalysisEngine {
       trade_setup: tradeSetup,
       short_term_analysis: shortTermAnalysis,
       long_term_analysis: longTermAnalysis,
-      ai_insight: await this.generateAIInsight(token, signals, tradeSetup), // Call AI Insight generation here
+      ai_insight: aiInsight,
       last_analysis: new Date().toISOString(),
     }
   }
@@ -1042,13 +1044,17 @@ async function fetchCommodityPrice(
     const commodityMap: Record<string, string> = {
       // Precious Metals
       GOLD: "GC=F",
-      XAUUSD: "GC=F", // Gold futures
+      XAU: "GC=F", // Added XAU mapping
+      XAUUSD: "GC=F",
       SILVER: "SI=F",
-      XAGUSD: "SI=F", // Silver futures
+      XAG: "SI=F", // Added XAG mapping
+      XAGUSD: "SI=F",
       PLATINUM: "PL=F",
-      XPTUSD: "PL=F", // Platinum futures
+      XPT: "PL=F", // Added XPT mapping
+      XPTUSD: "PL=F",
       PALLADIUM: "PA=F",
-      XPDUSD: "PA=F", // Palladium futures
+      XPD: "PA=F", // Added XPD mapping
+      XPDUSD: "PA=F",
 
       // Energy
       CRUDE: "CL=F",
@@ -1130,12 +1136,16 @@ async function fetchCommodityPrice(
     const fallbackPrices: Record<string, { price: number; change24h: number; marketCap: number; volume: number }> = {
       // Precious Metals
       GOLD: { price: 2677, change24h: 1.2, marketCap: 2677000000000, volume: 50000000 },
+      XAU: { price: 2677, change24h: 1.2, marketCap: 2677000000000, volume: 50000000 }, // Added XAU fallback
       XAUUSD: { price: 2677, change24h: 1.2, marketCap: 2677000000000, volume: 50000000 },
       SILVER: { price: 32.15, change24h: -0.8, marketCap: 32150000000, volume: 15000000 },
+      XAG: { price: 32.15, change24h: -0.8, marketCap: 32150000000, volume: 15000000 }, // Added XAG fallback
       XAGUSD: { price: 32.15, change24h: -0.8, marketCap: 32150000000, volume: 15000000 },
       PLATINUM: { price: 1011.5, change24h: 0.8, marketCap: 1011500000, volume: 3000000 },
+      XPT: { price: 1011.5, change24h: 0.8, marketCap: 1011500000, volume: 3000000 }, // Added XPT fallback
       XPTUSD: { price: 1011.5, change24h: 0.8, marketCap: 1011500000, volume: 3000000 },
       PALLADIUM: { price: 1050, change24h: -0.4, marketCap: 1050000000, volume: 2000000 },
+      XPD: { price: 1050, change24h: -0.4, marketCap: 1050000000, volume: 2000000 }, // Added XPD fallback
       XPDUSD: { price: 1050, change24h: -0.4, marketCap: 1050000000, volume: 2000000 },
 
       // Energy
@@ -1179,7 +1189,7 @@ async function fetchCommodityPrice(
 
     const fallback = fallbackPrices[symbol.toUpperCase()]
     if (fallback) {
-      console.log(`[v0] Using fallback price for commodity ${symbol}: $${fallback.price}`)
+      console.log(`[v0] Using fallback price for ${symbol}: $${fallback.price}`)
       return fallback
     }
 
@@ -1191,126 +1201,70 @@ async function fetchCommodityPrice(
   }
 }
 
-async function fetchForexPrice(
-  pair: string,
-): Promise<{ price: number; change24h: number; marketCap: number; volume: number } | null> {
-  try {
-    console.log(`[v0] Fetching forex price for ${pair}`)
-
-    let baseCurrency: string
-    let quoteCurrency: string
-
-    // Normalize the pair format
-    const normalizedPair = pair.trim().toUpperCase()
-
-    // Check if pair contains a slash (e.g., "EUR/USD")
-    if (normalizedPair.includes("/")) {
-      const parts = normalizedPair.split("/")
-      baseCurrency = parts[0].trim()
-      quoteCurrency = parts[1]?.trim() || "USD" // Default to USD if missing
-    }
-    // Check if pair is 6 characters (e.g., "EURUSD")
-    else if (normalizedPair.length === 6) {
-      baseCurrency = normalizedPair.substring(0, 3)
-      quoteCurrency = normalizedPair.substring(3, 6)
-    }
-    // Check if pair is 3 characters (single currency, default to USD)
-    else if (normalizedPair.length === 3) {
-      baseCurrency = normalizedPair
-      quoteCurrency = "USD"
-      console.log(`[v0] Single currency detected: ${baseCurrency}, defaulting to ${quoteCurrency}`)
-    }
-    // Invalid format
-    else {
-      console.log(`[v0] Invalid forex pair format: ${pair}`)
-      return null
-    }
-
-    // Validate currency codes (must be 3 characters)
-    if (baseCurrency.length !== 3 || quoteCurrency.length !== 3) {
-      console.log(`[v0] Invalid currency codes: ${baseCurrency}/${quoteCurrency}`)
-      return null
-    }
-
-    // Try Frankfurter API (free, no auth required)
-    const frankfurterUrl = `https://api.frankfurter.app/latest?from=${baseCurrency}&to=${quoteCurrency}`
-    const response = await fetch(frankfurterUrl, {
-      signal: AbortSignal.timeout(10000),
-    })
-
-    if (response.ok) {
-      const data = await response.json()
-      const rate = data.rates?.[quoteCurrency]
-
-      if (rate > 0) {
-        console.log(`[v0] Frankfurter API success for ${baseCurrency}/${quoteCurrency}: ${rate}`)
-        return {
-          price: rate,
-          change24h: (Math.random() - 0.5) * 2, // Estimate (Frankfurter doesn't provide change)
-          marketCap: rate * 1000000000000, // Estimate
-          volume: 1000000000, // Estimate
-        }
-      }
-    }
-
-    // Fallback prices for forex pairs
-    const fallbackPrices: Record<string, { price: number; change24h: number; marketCap: number; volume: number }> = {
-      EURUSD: { price: 1.08, change24h: -0.2, marketCap: 1080000000000, volume: 5000000000 },
-      "EUR/USD": { price: 1.08, change24h: -0.2, marketCap: 1080000000000, volume: 5000000000 },
-      GBPUSD: { price: 1.27, change24h: 0.1, marketCap: 1270000000000, volume: 3000000000 },
-      "GBP/USD": { price: 1.27, change24h: 0.1, marketCap: 1270000000000, volume: 3000000000 },
-      USDJPY: { price: 149.5, change24h: -0.3, marketCap: 149500000000, volume: 4000000000 },
-      "USD/JPY": { price: 149.5, change24h: -0.3, marketCap: 149500000000, volume: 4000000000 },
-      USDCHF: { price: 0.88, change24h: 0.2, marketCap: 880000000000, volume: 2000000000 },
-      "USD/CHF": { price: 0.88, change24h: 0.2, marketCap: 880000000000, volume: 2000000000 },
-      AUDUSD: { price: 0.64, change24h: 0.4, marketCap: 640000000000, volume: 1500000000 },
-      "AUD/USD": { price: 0.64, change24h: 0.4, marketCap: 640000000000, volume: 1500000000 },
-      USDCAD: { price: 1.42, change24h: -0.1, marketCap: 1420000000000, volume: 1800000000 },
-      "USD/CAD": { price: 1.42, change24h: -0.1, marketCap: 1420000000000, volume: 1800000000 },
-      NZDUSD: { price: 0.58, change24h: 0.3, marketCap: 580000000000, volume: 800000000 },
-      "NZD/USD": { price: 0.58, change24h: 0.3, marketCap: 580000000000, volume: 800000000 },
-      CNYUSD: { price: 0.14, change24h: -0.1, marketCap: 140000000000, volume: 500000000 },
-      "CNY/USD": { price: 0.14, change24h: -0.1, marketCap: 140000000000, volume: 500000000 },
-    }
-
-    // Try both formats for fallback
-    const pairKey = `${baseCurrency}${quoteCurrency}`
-    const slashKey = `${baseCurrency}/${quoteCurrency}`
-    const fallback = fallbackPrices[pairKey] || fallbackPrices[slashKey]
-
-    if (fallback) {
-      console.log(`[v0] Using fallback price for forex ${baseCurrency}/${quoteCurrency}: ${fallback.price}`)
-      return fallback
-    }
-
-    console.log(`[v0] No forex data available for ${baseCurrency}/${quoteCurrency}`)
-    return null
-  } catch (error) {
-    console.error(`[v0] Forex price fetch error for ${pair}:`, error)
-    return null
-  }
-}
-
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const symbol = searchParams.get("symbol")?.toUpperCase()
-  const type = searchParams.get("type") || "crypto" // crypto, commodity, forex
+  let type = searchParams.get("type") || "crypto" // crypto, commodity only (forex removed)
 
   if (!symbol) {
     return NextResponse.json({ success: false, error: "Symbol parameter is required" }, { status: 400 })
   }
 
+  const commoditySymbols = [
+    "GOLD",
+    "XAU",
+    "XAUUSD",
+    "SILVER",
+    "XAG",
+    "XAGUSD",
+    "PLATINUM",
+    "XPT",
+    "XPTUSD",
+    "PALLADIUM",
+    "XPD",
+    "XPDUSD",
+    "CRUDE",
+    "OIL",
+    "WTI",
+    "BRENT",
+    "WTIUSD",
+    "USOIL",
+    "BRENTOIL",
+    "COPPER",
+    "WHEAT",
+    "CORN",
+    "SOYBEANS",
+    "SUGAR",
+    "COFFEE",
+    "COTTON",
+    "NATGAS",
+    "GAS",
+    "NATURALGAS",
+  ]
+
+  // Auto-detect type based on symbol
+  if (commoditySymbols.includes(symbol)) {
+    type = "commodity"
+    console.log(`[v0] Auto-detected ${symbol} as commodity`)
+  }
+
+  const userSubscriptions = Array.from(subscriptions.values())
+  const activeSubscription = userSubscriptions.find((sub) => sub.status === "active")
+  const userTier = activeSubscription?.tier || "free"
+
+  // AI analysis requires Pro tier or above
+  const tierHierarchy: Record<string, number> = { free: 0, basic: 1, pro: 2, institutional: 3 }
+  const hasAIAccess = tierHierarchy[userTier] >= tierHierarchy["pro"]
+
   try {
-    console.log(`[v0] Analysis API called for ${type} symbol: ${symbol}`)
+    console.log(`[v0] Analysis API called for ${type} symbol: ${symbol} (tier: ${userTier})`)
 
     let tokenData: CryptoToken
 
     let priceData: { price: number; change24h: number; marketCap: number; volume: number } | null = null
 
-    if (type === "commodity") {
+    if (type === "commodity" || type === "commodities") {
       priceData = await fetchCommodityPrice(symbol)
-    } else if (type === "forex") {
-      priceData = await fetchForexPrice(symbol)
     } else {
       priceData = await fetchRealPrice(symbol)
     }
@@ -1413,13 +1367,6 @@ export async function GET(request: NextRequest) {
       } as CryptoToken
     }
 
-    console.log(`[v0] Token data prepared for analysis:`, {
-      symbol: tokenData.symbol,
-      price: tokenData.current_price,
-      change24h: tokenData.price_change_percentage_24h,
-      marketCap: tokenData.market_cap,
-    })
-
     console.log("[v0] Starting analysis for token:", tokenData.symbol)
     const analysis = await analysisEngine.analyzeToken(tokenData)
     console.log("[v0] Analysis completed successfully")
@@ -1447,13 +1394,55 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const symbol = body.symbol?.toUpperCase()
-    const type = body.type || body.market_type || "crypto" // crypto, commodity, forex
+    let type = body.type || body.market_type || "crypto" // crypto, commodity only (forex removed)
 
     if (!symbol) {
       return NextResponse.json({ success: false, error: "Symbol parameter is required" }, { status: 400 })
     }
 
-    console.log(`[v0] Analysis POST API called for ${type} symbol: ${symbol}`)
+    const commoditySymbols = [
+      "GOLD",
+      "XAU",
+      "XAUUSD",
+      "SILVER",
+      "XAG",
+      "XAGUSD",
+      "PLATINUM",
+      "XPT",
+      "XPTUSD",
+      "PALLADIUM",
+      "XPD",
+      "XPDUSD",
+      "CRUDE",
+      "OIL",
+      "WTI",
+      "BRENT",
+      "WTIUSD",
+      "USOIL",
+      "BRENTOIL",
+      "COPPER",
+      "WHEAT",
+      "CORN",
+      "SOYBEANS",
+      "SUGAR",
+      "COFFEE",
+      "COTTON",
+      "NATGAS",
+      "GAS",
+      "NATURALGAS",
+    ]
+
+    // Auto-detect type based on symbol
+    if (commoditySymbols.includes(symbol)) {
+      type = "commodity"
+      console.log(`[v0] Auto-detected ${symbol} as commodity`)
+    }
+
+    const userSubscriptions = Array.from(subscriptions.values())
+    const activeSubscription = userSubscriptions.find((sub) => sub.status === "active")
+    const userTier = activeSubscription?.tier || "free"
+
+    console.log(`[v0] Analysis POST API called for ${type} symbol: ${symbol} (tier: ${userTier})`)
 
     let tokenData: CryptoToken
 
@@ -1461,8 +1450,6 @@ export async function POST(request: NextRequest) {
 
     if (type === "commodity" || type === "commodities") {
       priceData = await fetchCommodityPrice(symbol)
-    } else if (type === "forex") {
-      priceData = await fetchForexPrice(symbol)
     } else {
       priceData = await fetchRealPrice(symbol)
     }
